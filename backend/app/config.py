@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     # --- Telegram (optional second channel; long polling, no public URL needed) ---
     telegram_bot_token: str | None = None
     telegram_poll_timeout: int = 25
+    telegram_bot_username: str | None = None  # shown on the website (public, not a secret)
+    whatsapp_enabled: bool = False  # Telegram-first: WhatsApp UI/linking is off unless enabled
 
     # --- Storage ---
     storage_backend: str = "local"  # local | s3

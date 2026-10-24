@@ -28,6 +28,7 @@ def user_out(db: Session, user: User) -> dict[str, Any]:
         "email_verified": user.email_verified_at is not None, "credits": user.credits_balance,
         "created_at": iso(user.created_at),
         "whatsapp": {
+            "enabled": get_settings().whatsapp_enabled,
             "status": "linked" if wa else ("pending" if pending else "not_linked"),
             "number": ("+" + wa.wa_id) if wa else None,
             "linked_at": iso(wa.linked_at) if wa else None,

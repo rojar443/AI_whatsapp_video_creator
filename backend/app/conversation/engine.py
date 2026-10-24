@@ -84,12 +84,15 @@ class ConversationEngine:
 
     # ================================================================== entry point
     def handle_inbound(self, message_id: str) -> None:
-        msg = self.db.scalar(select(Message).where(Message.id == message_id).with_for_update())
+        # FOR NO KEY UPDATE (key_share=True): serialises workers but doesn't block the API's inserts, whose
+        # foreign-key checks take FOR KEY SHARE on the conversation — a plain FOR UPDATE deadlocked with them.
+        msg = self.db.scalar(select(Message).where(Message.id == message_id).with_for_update(key_share=True))
         if msg is None or msg.direction != "inbound" or msg.status != "received":
             self.db.rollback()
             return  # already handled (idempotent)
         # Serialise per conversation so a burst of clips can't race into two projects.
-        conv = self.db.scalar(select(Conversation).where(Conversation.id == msg.conversation_id).with_for_update())
+        conv = self.db.scalar(select(Conversation).where(Conversation.id == msg.conversation_id)
+                              .with_for_update(key_share=True))
         out = Outbox(self.db, conv)
         try:
             with self.db.begin_nested():

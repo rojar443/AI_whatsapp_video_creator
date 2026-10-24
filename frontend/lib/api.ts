@@ -47,7 +47,7 @@ export type Me = {
   email_verified: boolean;
   credits: number;
   telegram: { enabled: boolean; linked: boolean; linked_at: string | null };
-  whatsapp: { status: "linked" | "pending" | "not_linked"; number: string | null; linked_at: string | null; business_number: string };
+  whatsapp: { enabled: boolean; status: "linked" | "pending" | "not_linked"; number: string | null; linked_at: string | null; business_number: string };
 };
 
 export type Asset = {

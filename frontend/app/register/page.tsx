@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useConfig } from "@/lib/useConfig";
 
 export default function Register() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [devUrl, setDevUrl] = useState("");
   const [phone, setPhone] = useState("");
+  const cfg = useConfig();
 
   useEffect(() => {
     setPhone(new URLSearchParams(window.location.search).get("phone") || "");
@@ -67,12 +69,14 @@ export default function Register() {
             <label htmlFor="email">Email</label>
             <input id="email" name="email" type="email" required autoComplete="email" />
           </div>
+          {cfg?.whatsapp_enabled && (
           <div className="field">
             <label htmlFor="phone">WhatsApp number (optional)</label>
             <input id="phone" name="phone" placeholder="+91 98765 43210" autoComplete="tel"
                    value={phone} onChange={(e) => setPhone(e.target.value)} />
             <p className="small muted" style={{ margin: "4px 0 0" }}>International format, with country code. Skip it if you only use Telegram.</p>
           </div>
+          )}
           <div className="field">
             <label htmlFor="password">Password</label>
             <input id="password" name="password" type="password" required minLength={10} autoComplete="new-password" />

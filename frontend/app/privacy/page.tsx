@@ -8,8 +8,8 @@ export default function Privacy() {
 
       <h2>What we collect</h2>
       <ul>
-        <li>Account data: name, email, WhatsApp number, hashed password.</li>
-        <li>The photos and video clips you send, the WhatsApp messages you send to ReelChat, and transcripts of your
+        <li>Account data: name, email, optional phone number, hashed password.</li>
+        <li>The photos and video clips you send, the chat messages you send to ReelChat, and transcripts of your
           voice notes.</li>
         <li>Reel projects: your preferences, the editing plan, generated scripts, finished reels and their status.</li>
         <li>Usage records (credits, generation counts) and security logs (sign-ins, account changes).</li>
@@ -23,12 +23,12 @@ export default function Privacy() {
         transcript as part of the conversation.
       </p>
 
-      <h2>WhatsApp</h2>
+      <h2>Telegram</h2>
       <p>
-        We only reply after you message us first, using the official WhatsApp Business Platform. Outside a 24-hour
-        conversation window we only send an approved notification when your reel is ready. Linking your number to a
-        website account (by sending a code) is optional and moves your drafts into your history. Unlink it on the
-        Account page at any time.
+        We only reply after you message our bot first, using Telegram's official Bot API. We see your Telegram name
+        and chat id, not your phone number. Linking your chat to a website account is optional and moves your drafts
+        into your history. Disconnect it on the Account page at any time. Telegram processes messages under its own
+        privacy policy.
       </p>
 
       <h2>Retention</h2>

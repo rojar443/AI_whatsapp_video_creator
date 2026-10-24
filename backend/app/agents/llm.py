@@ -267,23 +267,26 @@ class GeminiAgentProvider(LLMAgentProvider):
 
 
 class OpenAIAgentProvider(LLMAgentProvider):
-    """OpenAI or any OpenAI-compatible server (Ollama, vLLM, LM Studio) via base_url."""
+    """Any OpenAI-compatible chat API (OpenAI, Pollinations, OpenRouter, Ollama, vLLM…) over plain HTTP —
+    no vendor SDK needed. Images are sent as data URLs, so the model must support vision for moment scoring."""
 
     name = "openai"
     default_model = "gpt-4.1-mini"
 
     def __init__(self, models=None, api_key=None, base_url=None, timeout: float = 60, client=None, name=None):
         super().__init__(models)
+        import httpx
+
         if name:
             self.name = name
-        if client is None:
-            from openai import OpenAI  # optional dependency: pip install ".[openai]"
-
-            client = OpenAI(api_key=api_key or "not-needed", base_url=base_url, timeout=timeout)
-        self.client = client
+        self.base = (base_url or "https://api.openai.com/v1").rstrip("/")
+        headers = {"authorization": f"Bearer {api_key}"} if api_key else {}
+        self.client = client or httpx.Client(timeout=timeout, headers=headers)
 
     def _json(self, task, system, parts, schema, max_tokens):
         import base64
+
+        import httpx
 
         content: list[dict] = []
         for p in parts:
@@ -293,12 +296,32 @@ class OpenAIAgentProvider(LLMAgentProvider):
             else:
                 content.append({"type": "text", "text": p})
         sys = system + "\n\nRespond with ONLY a JSON object matching this JSON Schema:\n" + json.dumps(schema)
-        resp = self.client.chat.completions.create(
-            model=self.model_for(task), max_tokens=max_tokens, response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": content}])
-        u = getattr(resp, "usage", None)
-        self._record(task, getattr(u, "prompt_tokens", 0) or 0, getattr(u, "completion_tokens", 0) or 0)
-        return parse_json(resp.choices[0].message.content or "")
+        body = {"model": self.model_for(task), "max_tokens": max_tokens, "response_format": {"type": "json_object"},
+                "messages": [{"role": "system", "content": sys}, {"role": "user", "content": content}]}
+        try:
+            r = self.client.post(f"{self.base}/chat/completions", json=body)
+        except httpx.HTTPError as e:
+            raise AgentError(f"{self.name} request failed: {type(e).__name__}") from e
+        if r.status_code >= 400:
+            raise AgentError(f"{self.name} error {r.status_code}: {r.text[:200]}")
+        try:
+            data = r.json()
+            text = data["choices"][0]["message"]["content"] or ""
+        except (ValueError, KeyError, IndexError) as e:
+            raise AgentError(f"{self.name} returned an unexpected response") from e
+        u = data.get("usage") or {}
+        self._record(task, u.get("prompt_tokens", 0) or 0, u.get("completion_tokens", 0) or 0)
+        return parse_json(text)
+
+    def health(self) -> dict[str, Any]:
+        h = super().health()
+        try:
+            r = self.client.get(f"{self.base}/models")
+            if r.status_code >= 400:
+                h.update(ok=False, error=f"HTTP {r.status_code}")
+        except Exception as e:  # noqa: BLE001
+            h.update(ok=False, error=f"{type(e).__name__}")
+        return h
 
 
 class AnthropicAgentProvider(LLMAgentProvider):

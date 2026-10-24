@@ -1,4 +1,5 @@
 import Link from "next/link";
+import StartButton from "@/components/StartButton";
 
 const demo: [string, "in" | "out"][] = [
   ["🎞 🎞 🎞 🎞 🎞 🎞  (6 clips from a trip)", "out"],
@@ -14,20 +15,20 @@ export default function Home() {
     <>
       <section className="hero">
         <div>
-          <h1>Your raw clips, turned into a reel — on WhatsApp</h1>
+          <h1>Your raw clips, turned into a reel — in Telegram</h1>
           <p className="lead">
-            Send the photos and videos sitting on your phone, say the vibe you want, approve the plan, and get a
-            finished vertical reel for Instagram or YouTube Shorts in the same chat. No app, no editing skills.
+            Send the photos and videos sitting on your phone to our Telegram bot, say the vibe you want, approve the
+            plan, and get a finished vertical reel for Instagram or YouTube Shorts in the same chat. No editing skills.
           </p>
           <div className="row">
-            <Link className="btn" href="#how">How it works</Link>
+            <StartButton />
             <Link className="btn secondary" href="/register">Create account</Link>
           </div>
           <p className="small muted" style={{ marginTop: 12 }}>
-            Your first draft doesn't need an account — just message us on WhatsApp.
+            Your first draft doesn't need an account — just message the bot.
           </p>
         </div>
-        <div className="phone" aria-label="Example WhatsApp conversation">
+        <div className="phone" aria-label="Example Telegram conversation">
           <div className="chat">
             {demo.map(([t, d], i) => (
               <div key={i} className={`bubble ${d}`}>{t}</div>
@@ -41,7 +42,7 @@ export default function Home() {
         <div className="grid grid-2" style={{ marginTop: 16 }}>
           <div className="card">
             <ol className="steps">
-              <li><strong>Send your clips and photos</strong> to the ReelChat WhatsApp number.</li>
+              <li><strong>Send your clips and photos</strong> to the ReelChat bot in Telegram.</li>
               <li><strong>Say what you want</strong> — "cinematic travel reel, calm voiceover" — by text or voice note.</li>
               <li><strong>Check the plan.</strong> See which moments were picked and why. Nothing is made until you say yes.</li>
               <li><strong>Get your reel</strong> in the chat, then ask for changes like "shorter" or "start with the beach".</li>
@@ -54,7 +55,7 @@ export default function Home() {
               ["Genre playbooks", "Travel and daily-life reels follow curated editing rules for pacing, structure and look."],
               ["Narration & captions", "A short AI-written script, read by a natural voice. Captions come from the script, so silent clips work."],
               ["Photos come alive", "Photos get a slow zoom or pan so they sit naturally between your clips."],
-              ["Made for sharing", "9:16 MP4 sized to send in WhatsApp, or a secure download link."],
+              ["Made for sharing", "9:16 MP4 sized to send in the chat, or a secure download link."],
               ["Fair credits", "Failed edits are refunded automatically. No double charges."],
             ].map(([t, d]) => (
               <div className="card" key={t}>

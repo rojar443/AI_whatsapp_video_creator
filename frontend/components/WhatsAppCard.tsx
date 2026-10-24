@@ -9,7 +9,8 @@ export default function WhatsAppCard({ me, onChange }: { me: Me; onChange: () =>
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  if (!me.phone && me.whatsapp.status !== "linked") return null; // Telegram-only account (after hooks)
+  if (!me.whatsapp.enabled) return null; // Telegram-first: hidden unless WhatsApp is enabled (after hooks)
+  if (!me.phone && me.whatsapp.status !== "linked") return null;
 
   async function start() {
     setError("");

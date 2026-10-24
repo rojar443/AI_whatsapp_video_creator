@@ -43,6 +43,8 @@ def start_link(request: Request, user: User = Depends(current_user), db: Session
     """Issue a 6-digit code. The user sends 'LINK <code>' from their registered WhatsApp
     number: that proves they own the number and opts them in to messages from us."""
     s = get_settings()
+    if not s.whatsapp_enabled:
+        raise HTTPException(404, "WhatsApp is not enabled on this server")
     if not user.phone_e164:
         raise HTTPException(422, "Add your WhatsApp number first")
     wa_id = wa_id_from_e164(user.phone_e164)
