@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_poll_timeout: int = 25
     telegram_bot_username: str | None = None  # shown on the website (public, not a secret)
+    registration_enabled: bool = False  # Telegram-only use needs no accounts; true re-enables website signup
     whatsapp_enabled: bool = False  # Telegram-first: WhatsApp UI/linking is off unless enabled
 
     # --- Storage ---

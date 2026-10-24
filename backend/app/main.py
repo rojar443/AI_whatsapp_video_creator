@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/config", tags=["health"])
     def public_config():
-        return {"app_name": s.app_name, "dev_mode": s.is_dev, "whatsapp_enabled": s.whatsapp_enabled,
+        return {"app_name": s.app_name, "dev_mode": s.is_dev, "registration_enabled": s.registration_enabled, "whatsapp_enabled": s.whatsapp_enabled,
                 "whatsapp_business_number": s.whatsapp_business_number,
                 "telegram_bot": s.telegram_bot_username if s.telegram_bot_token else None}
 
