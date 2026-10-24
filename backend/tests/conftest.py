@@ -7,13 +7,25 @@ import uuid
 from pathlib import Path
 
 import pytest
+from dotenv import dotenv_values, load_dotenv
+from sqlalchemy.engine import make_url
 
 BACKEND = Path(__file__).resolve().parents[1]
+load_dotenv(BACKEND.parent / ".env")
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
+if not TEST_DATABASE_URL:
+    raise RuntimeError("Set TEST_DATABASE_URL to a dedicated PostgreSQL test database before running pytest")
+test_url = make_url(TEST_DATABASE_URL)
+if test_url.get_backend_name() != "postgresql" or not (test_url.database or "").endswith("_test"):
+    raise RuntimeError("TEST_DATABASE_URL must use PostgreSQL and a database name ending in _test; tests delete tables")
+app_database_url = dotenv_values(BACKEND.parent / ".env").get("DATABASE_URL")
+if app_database_url and test_url == make_url(app_database_url):
+    raise RuntimeError("TEST_DATABASE_URL must differ from DATABASE_URL")
 _TMP = Path(tempfile.mkdtemp(prefix="reelchat-test-"))
 os.environ.update({
     "APP_ENV": "test",
     "SECRET_KEY": "test-secret-key-0123456789",
-    "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite:///{_TMP}/test.db"),
+    "DATABASE_URL": TEST_DATABASE_URL,
     "TASK_BACKEND": "inline",
     "STORAGE_LOCAL_DIR": str(_TMP / "storage"),
     "WORK_DIR": str(_TMP / "work"),
@@ -23,6 +35,7 @@ os.environ.update({
     "WHATSAPP_ENABLED": "true",
     "REGISTRATION_ENABLED": "true",
     "AI_PROVIDER": "rules",
+    "AGENT_PROVIDER": "rules",
     "TTS_PROVIDER": "mock",
     "TRANSCRIPTION_PROVIDER": "mock",
     "WHATSAPP_APP_SECRET": "test-app-secret",
@@ -30,6 +43,7 @@ os.environ.update({
     "JOB_RETRY_BASE_SECONDS": "1",
     "DEFAULT_CREDITS": "10",
     "ANON_CREDITS": "2",
+    "ANON_MAX_PROJECTS": "2",
     "PUBLIC_BASE_URL": "http://testserver",
 })
 

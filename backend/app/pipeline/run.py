@@ -31,7 +31,7 @@ FLAG_TEXT = {"dark": "too dark", "shaky": "too shaky", "duplicate": "near-duplic
 
 
 def work_dir(name: str) -> Path:
-    p = Path(get_settings().work_dir) / name
+    p = (Path(get_settings().work_dir) / name).resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
 

@@ -146,7 +146,7 @@ def batch_timeout(project_id: str, last_media_iso: str) -> None:
         p = db.get(VideoProject, project_id)
         if p is None or p.status != S.collecting_media.value or p.last_media_at is None:
             return
-        if aware(p.last_media_at).isoformat() != aware(datetime.fromisoformat(last_media_iso)).isoformat():
+        if aware(p.last_media_at) != aware(datetime.fromisoformat(last_media_iso)):
             return  # more media arrived since; a later timeout will handle it
         out = _outbox(db, p)
         if out is None:

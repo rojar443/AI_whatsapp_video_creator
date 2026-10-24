@@ -74,9 +74,12 @@ See [the input/output contract and agent configuration guidance](docs/AGENTICORG
 ## Tests
 
 ```bash
-docker compose run --rm --no-deps api pytest            # full suite incl. FFmpeg rendering (SQLite)
+docker compose exec postgres createdb -U reelchat reelchat_test
+docker compose run --rm --no-deps -e TEST_DATABASE_URL=postgresql+psycopg://reelchat:reelchat@postgres:5432/reelchat_test api pytest
 cd backend && uv venv && uv pip install -e ".[all,dev]" && .venv/bin/pytest   # local; FFmpeg tests skip if ffmpeg is missing
 ```
+
+Native Windows startup: `powershell -File scripts/start-local.ps1`. PostgreSQL-only local setup and dedicated test database instructions are in [docs/SETUP.md](docs/SETUP.md#native-windows-setup-postgresql-only).
 
 ## Stack
 FastAPI · SQLAlchemy/Alembic · PostgreSQL · Redis + Celery · FFmpeg · Next.js 15 · Docker Compose ·

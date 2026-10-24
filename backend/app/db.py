@@ -1,8 +1,8 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -13,19 +13,9 @@ class Base(DeclarativeBase):
 
 
 def _make_engine(url: str) -> Engine:
-    kwargs: dict = {"pool_pre_ping": True}
-    if url.startswith("sqlite"):
-        kwargs["connect_args"] = {"check_same_thread": False}
-    engine = create_engine(url, **kwargs)
-    if url.startswith("sqlite"):
-
-        @event.listens_for(engine, "connect")
-        def _fk_on(dbapi_conn, _):  # enforce FKs in SQLite (tests)
-            cur = dbapi_conn.cursor()
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.close()
-
-    return engine
+    if make_url(url).get_backend_name() != "postgresql":
+        raise ValueError("DATABASE_URL must use PostgreSQL (postgresql+psycopg://...)")
+    return create_engine(url, pool_pre_ping=True)
 
 
 @lru_cache

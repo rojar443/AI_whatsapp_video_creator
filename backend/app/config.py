@@ -1,5 +1,6 @@
 """Application settings, loaded from environment variables (never from source code)."""
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -7,12 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", extra="ignore")
 
     app_name: str = "ReelChat"
     app_env: Literal["development", "test", "production"] = "development"
     secret_key: str = Field(default="dev-insecure-secret-change-me", min_length=16)
-    database_url: str = "sqlite:///./reelchat.db"
+    database_url: str = "postgresql+psycopg://reelchat:reelchat@127.0.0.1:55433/reelchat"
     redis_url: str = "redis://localhost:6379/0"
     # "celery" in docker/production; "inline" runs tasks in-process (tests / no Redis).
     task_backend: Literal["celery", "inline"] = "celery"

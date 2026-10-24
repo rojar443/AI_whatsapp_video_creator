@@ -21,6 +21,17 @@ from app.tts import words_from_alignment
 agent = RulesAgentProvider()
 
 
+def test_work_dir_resolves_relative_configuration(tmp_path, monkeypatch):
+    from app.config import get_settings
+    from app.pipeline.run import work_dir
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(get_settings(), "work_dir", "var/work")
+    result = work_dir("relative-path-check")
+    assert result == tmp_path / "var/work/relative-path-check"
+    assert result.is_absolute() and result.is_dir()
+
+
 def analyze(text, state="none", prefs=None):
     return agent.analyze_message(text, AgentContext(state=state, prefs=prefs or {})).sanitized()
 

@@ -1,5 +1,38 @@
 # Setup, running, tests and deployment
 
+## Native Windows setup (PostgreSQL only)
+
+This checkout is configured in the repository-root `.env` for native local development:
+
+* PostgreSQL: `127.0.0.1:55433`, app database `reelchat`, disposable test database `reelchat_test`.
+* Redis: `127.0.0.1:56379`, with Celery background jobs.
+* FFmpeg and FFprobe: verified Windows essentials build under `.tools/ffmpeg/`, with absolute executable paths in `.env`.
+* TTS: `mock` (silent demo audio). Install espeak-ng before selecting `espeak`, or configure ElevenLabs for narration.
+
+The project database cluster lives in `.tools/postgres/data`; it is independent of the existing PostgreSQL Windows service on port 5433. Local passwords are generated and stored only in `.env`. `.tools/` and `.env` are ignored by Git. Settings always read the root `.env`, including when commands run from `backend/`.
+
+Start from PowerShell in the repository root:
+
+```powershell
+.\scripts\start-local.ps1
+# Website: http://localhost:3100
+# API docs: http://localhost:8100/api/docs
+# Offline simulator: http://localhost:3100/dev/whatsapp
+.\scripts\stop-local.ps1
+```
+
+The startup script uses the installed PostgreSQL 18 binaries and Redis executable; pass `-PostgresBin` or `-RedisServer` to change their locations. It runs migrations and starts the API, Windows-compatible Celery solo worker, separate scheduler, and frontend in hidden processes. Logs are in `.tools/runtime/`. PostgreSQL remains running when app processes stop.
+
+Run validation with the local PostgreSQL instance running:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m alembic check
+.\.venv\Scripts\python.exe -m pytest --basetemp=../.tools/pytest-local
+```
+
+`TEST_DATABASE_URL` must point to a separate PostgreSQL database whose name ends in `_test`; pytest deletes and recreates its tables. Do not run concurrent test sessions against the same database. The full suite exercises real FFmpeg rendering when the configured executables are available. When provisioning a fresh checkout, create both databases before migrations/tests; `start-local.ps1` expects the local tools and cluster to have been installed.
+
 ## 1. Local demo mode (no accounts needed)
 Runs fully offline with the rules agent, a silent placeholder voice, sample footage and the WhatsApp simulator.
 For an audible offline voice build with `docker compose build --build-arg APT_EXTRA=espeak-ng` and set `TTS_PROVIDER=espeak`.
@@ -29,9 +62,11 @@ Tip for testers: send clips **as a document** (📎 → Document) to avoid Whats
 ## 3. Tests
 ```bash
 # full suite incl. real FFmpeg rendering (inside the image)
-docker compose run --rm --no-deps -e TASK_BACKEND=inline api pytest
+docker compose exec postgres createdb -U reelchat reelchat_test
+docker compose run --rm --no-deps -e TASK_BACKEND=inline -e TEST_DATABASE_URL=postgresql+psycopg://reelchat:reelchat@postgres:5432/reelchat_test api pytest
 # fast local run (FFmpeg tests skip if ffmpeg is missing)
 cd backend && uv venv && uv pip install -e ".[dev]" && .venv/bin/pytest
+# Requires TEST_DATABASE_URL pointing to a dedicated PostgreSQL database ending in _test.
 ```
 Suites: `test_units.py` (extraction, safety, playbooks, sequencing, captions, plugin/HTTP steps, Gemini adapter),
 `test_flow.py` (acceptance flow: anonymous draft, batch timeout, revision, linking/merge, duplicate confirmation,

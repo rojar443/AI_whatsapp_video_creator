@@ -1,5 +1,8 @@
 """AgenticOrg interpretation contract and handoff to the conversation engine."""
 import json
+import importlib.util
+from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -74,11 +77,64 @@ def test_invalid_output_uses_original_message(output):
     assert agent.analyze_message(text, ctx) == RulesAgentProvider().analyze_message(text, ctx).sanitized()
 
 
-@pytest.mark.parametrize("status", ["failed", "hitl_triggered", "budget_exceeded", "running", ""])
-def test_only_completed_runs_are_consumed(status):
+@pytest.mark.parametrize("status", ["failed", "budget_exceeded", "running", ""])
+def test_unsuccessful_runs_use_original_message(status):
     agent = AgenticOrgAgentProvider(agent_name="video_interpreter", client=FakeClient(status=status))
     result = agent.analyze_message("Create a cinematic travel reel", AgentContext(state="none"))
     assert result.fields["vibe"] == "cinematic"  # discard the remote funny-vibe output
+
+
+@pytest.mark.parametrize("status", ["completed", "hitl_triggered"])
+def test_flat_agent_output_is_accepted_for_review(status):
+    output = {
+        "duration_seconds": 20, "style": "cinematic", "pacing": "slow",
+        "aspect_ratio": "9:16", "music_mood": "peaceful", "captions": False,
+        "additional_instructions": "Create an Instagram Reel using slow transitions.",
+        "ready_to_process": True,
+    }
+    agent = AgenticOrgAgentProvider(agent_name="video_interpreter", client=FakeClient(output, status))
+    result = agent.analyze_message("Create a travel reel", AgentContext(state="none"))
+    assert result.intent == "create_reel"
+    assert result.fields["style"] == "cinematic"
+    assert result.fields["captions"] is False
+    assert "slow transitions" in result.fields["instructions"]
+    assert "Pacing: slow" in result.fields["instructions"]
+    assert "Music mood: peaceful" in result.fields["instructions"]
+    assert "duration" not in result.fields  # 20 seconds is outside local supported lengths
+    assert any("20-second" in note for note in result.unsupported)
+    assert result.done is False
+
+
+def test_review_status_with_envelope_and_supported_duration():
+    agent = AgenticOrgAgentProvider(agent_name="video_interpreter", client=FakeClient(status="hitl_triggered"))
+    assert agent.analyze_message("Create a reel", AgentContext(state="none")).fields == INTERPRETATION["fields"]
+    agent.client = FakeClient({"duration_seconds": 30, "ready_to_process": True}, "hitl_triggered")
+    result = agent.analyze_message("Change the length", AgentContext(state="awaiting_confirmation"))
+    assert result.fields["duration"] == "30"
+    assert result.intent != "confirm"
+
+
+def test_empty_review_output_uses_original_message():
+    agent = AgenticOrgAgentProvider(agent_name="video_interpreter", client=FakeClient({}, "hitl_triggered"))
+    result = agent.analyze_message("Create a cinematic travel reel", AgentContext(state="none"))
+    assert result.fields["vibe"] == "cinematic"
+
+
+@pytest.mark.parametrize("status,expected_code", [("completed", 0), ("hitl_triggered", 0), ("failed", 1)])
+def test_smoke_script_status_handling_without_live_api(monkeypatch, capsys, status, expected_code):
+    monkeypatch.setattr("dotenv.load_dotenv", lambda: None)
+    monkeypatch.setenv("AGENTICORG_API_KEY", "test-key")
+    monkeypatch.setenv("AGENTICORG_AGENT_NAME", "888f7361-3216-43f3-8380-df3052001f6e")
+    path = Path(__file__).resolve().parents[2] / "test_agenticcore.py"
+    spec = importlib.util.spec_from_file_location("agenticorg_smoke_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "AgenticOrg", lambda **kwargs: nullcontext(FakeClient(status=status)))
+    assert module.main() == expected_code
+    captured = capsys.readouterr()
+    if status == "hitl_triggered":
+        assert "Interpretation returned for review" in captured.out
+        assert captured.err == ""
 
 
 @pytest.mark.parametrize("error", [TimeoutError("private error details"), RuntimeError("private error details"),
