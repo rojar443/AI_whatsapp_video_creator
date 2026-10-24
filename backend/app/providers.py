@@ -21,7 +21,7 @@ from app.models import ProviderConfiguration
 
 log = logging.getLogger(__name__)
 
-AGENT_PROVIDERS = ["rules", "anthropic", "openai", "openai_compatible", "gemini"]
+AGENT_PROVIDERS = ["rules", "anthropic", "openai", "openai_compatible", "gemini", "agenticorg"]
 VIDEO_PROVIDERS = ["mock", "stock"]
 TTS_PROVIDERS = ["mock", "espeak", "openai"]
 TRANSCRIPTION_PROVIDERS = ["mock", "openai"]
@@ -50,6 +50,14 @@ def _builtin_agent(name: str, models: dict[str, str | None]) -> AgentProvider:
         from app.agents.rules import RulesAgentProvider
 
         return RulesAgentProvider(models)
+    if name == "agenticorg":
+        from app.agents.agenticorg import AgenticOrgAgentProvider
+
+        return AgenticOrgAgentProvider(
+            models, api_key=s.agenticorg_api_key, agent_name=s.agenticorg_agent_name,
+            base_url=s.agenticorg_base_url, company_id=s.agenticorg_company_id,
+            action=s.agenticorg_action, timeout=s.agent_timeout_seconds,
+        )
     from app.agents import llm
 
     if name == "anthropic":

@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     admin_password: str | None = None
 
     # --- AI agent ---
-    # rules | anthropic | openai | openai_compatible | gemini
+    # rules | anthropic | openai | openai_compatible | gemini | agenticorg
     agent_provider: str = "rules"
     agent_model: str | None = None  # default model for all tasks
     agent_model_analysis: str | None = None  # intent + requirement extraction
@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_base_url: str | None = None  # for openai_compatible (e.g. Ollama, vLLM)
     gemini_api_key: str | None = None
+    agenticorg_api_key: str | None = None
+    agenticorg_agent_name: str | None = None  # existing agent UUID or type
+    agenticorg_base_url: str | None = None  # SDK default when unset
+    agenticorg_company_id: str | None = None  # required for agent-type runs
+    agenticorg_action: str = "process"
     agent_timeout_seconds: float = 30.0
 
     # --- Speech ---

@@ -28,6 +28,33 @@ docker compose up --build       # web :3100 · api :8100 · postgres :55433 (all
 
 Admin: set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`, log in, open **Admin**.
 
+## AgenticOrg message interpretation
+
+To interpret incoming text and voice transcripts using an existing AgenticOrg agent,
+set these values in `.env`:
+
+```dotenv
+AGENT_PROVIDER=agenticorg
+AGENTICORG_API_KEY=your-key
+AGENTICORG_AGENT_NAME=your-agent-uuid-or-type
+AGENTICORG_COMPANY_ID=your-company-uuid
+```
+
+`AGENTICORG_COMPANY_ID` is required for agent types; it is optional for agent UUIDs.
+Optionally set `AGENTICORG_BASE_URL` for your deployment and `AGENTICORG_ACTION`
+(default `process`). Requests use `AGENT_TIMEOUT_SECONDS` (default 30).
+The Docker build includes the SDK; rebuild with `docker compose up --build`.
+For a local backend, install with `pip install -e ".[agenticorg,dev]"` from `backend/`.
+If Admin has a saved agent override, select `agenticorg` there or reset it to environment config.
+
+The agent receives `inputs.statement` and `inputs.context` and must return a
+`MessageAnalysis` JSON object in `result.output`. That interpretation passes directly
+to requirement collection and validation. Video generation still requires user confirmation.
+Script writing uses the existing rules implementation. Failed calls or invalid JSON use
+the existing rules fallback.
+
+See [the input/output contract and agent configuration guidance](docs/AGENTICORG.md).
+
 ## Tests
 
 ```bash
