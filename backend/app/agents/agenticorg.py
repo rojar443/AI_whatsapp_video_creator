@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app.agents.base import AgentContext, AgentError, MessageAnalysis
 from app.agents.rules import RulesAgentProvider
+from app.conversation import preferences
 
 log = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://agenticorg.hackathon.pinelabs.com"
@@ -76,19 +77,54 @@ class AgenticOrgAgentProvider(RulesAgentProvider):
             with self._client_factory(**self._client_options) as client:
                 result = client.agents.run(self.agent_name, **kwargs)
 
-        if result.status != "completed":
+        if result.status not in ("completed", "hitl_triggered"):
             raise AgentError("AgenticOrg run did not complete successfully")
         try:
             output = json.loads(result.output) if isinstance(result.output, str) else result.output
-            # MessageAnalysis has defaults; require the interpretation envelope so
-            # an empty/unrelated output triggers the original-message fallback.
-            if not isinstance(output, dict) or not {"intent", "fields"} <= output.keys():
-                raise ValueError("missing interpretation envelope")
+            if not isinstance(output, dict):
+                raise ValueError("missing interpretation object")
+            if not {"intent", "fields"} <= output.keys():
+                return self._flat_interpretation(output, result.confidence, text, ctx)
             data = dict(output)
             data.setdefault("confidence", result.confidence)
             return MessageAnalysis.model_validate(data).sanitized()
         except (ValueError, TypeError, ValidationError) as exc:
             raise AgentError("AgenticOrg returned invalid message interpretation JSON") from exc
+
+    def _flat_interpretation(
+        self, output: dict[str, Any], confidence: float, text: str, ctx: AgentContext,
+    ) -> MessageAnalysis:
+        """Adapt the deployed agent's flat editing brief to local preferences."""
+        aliases = {"duration_seconds", "additional_instructions", "pacing", "music_mood"}
+        if not (set(preferences.ALL_FIELDS) | aliases) & output.keys():
+            raise ValueError("missing editing preferences")
+        original = super().analyze_message(text, ctx).sanitized()
+        fields = dict(original.fields)
+        fields.update({key: value for key, value in output.items() if key in preferences.ALL_FIELDS})
+        instructions = [fields.get("instructions"), output.get("additional_instructions")]
+        unsupported = list(original.unsupported)
+        if output.get("duration_seconds") is not None:
+            duration = preferences.coerce_field("duration", output["duration_seconds"])
+            if duration is not None:
+                fields["duration"] = duration
+            else:
+                unsupported.append(
+                    f"Requested {output['duration_seconds']}-second duration; supported lengths are 15, 30, 60 seconds or original."
+                )
+        for key, label in (("pacing", "Pacing"), ("music_mood", "Music mood")):
+            if output.get(key):
+                instructions.append(f"{label}: {output[key]}")
+        if output.get("aspect_ratio") not in (None, "9:16"):
+            unsupported.append("Only the vertical 9:16 aspect ratio is supported.")
+        combined = "; ".join(str(value) for value in instructions if value)
+        if combined:
+            fields["instructions"] = combined
+        # ready_to_process describes the remote brief. It cannot approve a plan
+        # or declare that the user has finished uploading media.
+        return MessageAnalysis(
+            intent=original.intent, confidence=confidence, fields=fields,
+            unsupported=unsupported, done=original.done,
+        ).sanitized()
 
     def health(self) -> dict[str, Any]:
         # Configuration readiness only; do not run a billable agent health probe.

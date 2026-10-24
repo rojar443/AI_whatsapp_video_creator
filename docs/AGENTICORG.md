@@ -5,8 +5,10 @@ or transcribed voice note. Linking and interactive buttons are handled by the ex
 conversation engine. The integration does not create or deploy remote agents.
 
 Configure the environment as described in [README](../README.md#agenticorg-message-interpretation).
-The adapter uses the pinned `agenticorg==0.4.0` SDK, requires run status `completed`,
-and consumes `result.output`. Admin model fields do not select the remote model:
+The adapter uses the pinned `agenticorg==0.4.0` SDK and consumes valid `result.output`
+from `completed` or `hitl_triggered` runs as a proposed interpretation for review.
+Other statuses or invalid output use the original-message fallback.
+Admin model fields do not select the remote model:
 configure that model in AgenticOrg. The provider health result checks local configuration,
 not remote connectivity or authorization.
 
@@ -43,6 +45,13 @@ up to six objects with `role` (`user` or `assistant`) and `text`. Use this conte
 interpret short answers and revisions.
 
 ## Output
+
+The deployed agent's flat JSON is also supported: `style` and `captions` become
+local preferences, `duration_seconds` maps to a supported `duration`, and
+`additional_instructions`, `pacing`, and `music_mood` become editing instructions.
+Durations outside 15/30/60 seconds are reported as unsupported rather than silently
+changed. `ready_to_process` does not approve generation or mark uploads complete;
+the normal user confirmation step remains required.
 
 Configure the agent to return this object in `result.output`:
 
