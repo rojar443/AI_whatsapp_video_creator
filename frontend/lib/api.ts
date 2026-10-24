@@ -8,10 +8,14 @@ export class ApiError extends Error {
   }
 }
 
+let memoryCsrf = ""; // fallback when the rc_csrf cookie isn't readable (blocked/misconfigured cookies)
+
 function csrfToken(): string {
-  if (typeof document === "undefined") return "";
-  const m = document.cookie.match(/(?:^|;\s*)rc_csrf=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : "";
+  if (typeof document !== "undefined") {
+    const m = document.cookie.match(/(?:^|;\s*)rc_csrf=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+  }
+  return memoryCsrf;
 }
 
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
@@ -31,6 +35,7 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
   } catch {
     data = { detail: text };
   }
+  if (data && typeof data.csrf_token === "string") memoryCsrf = data.csrf_token;
   if (!res.ok) {
     let msg = data?.detail ?? `Request failed (${res.status})`;
     if (Array.isArray(msg)) msg = msg.map((d: any) => d.msg?.replace(/^Value error, /, "")).join(". ");

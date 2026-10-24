@@ -134,3 +134,12 @@ def test_registration_can_be_disabled(client, monkeypatch):
                                                 "accept_terms": True})
     assert r.status_code == 403 and "disabled" in r.json()["detail"]
     assert client.get("/api/config").json()["registration_enabled"] is False
+
+
+def test_me_returns_csrf_token_fallback(client):
+    data = register(client)
+    me = client.get("/api/me").json()
+    assert me["csrf_token"] == data["csrf_token"]
+    client.headers.pop("x-csrf-token")
+    assert client.post("/api/auth/logout").status_code == 403  # header required
+    assert client.post("/api/auth/logout", headers={"x-csrf-token": me["csrf_token"]}).status_code == 200

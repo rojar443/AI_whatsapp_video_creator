@@ -75,8 +75,21 @@ TEMPLATES: dict[str, str] = {
 }
 
 
+# Used instead of the signup-oriented texts when website registration is switched off.
+NO_REGISTRATION: dict[str, str] = {
+    "anon_limit": "You've used all your free reels for now. Please try again later.",
+    "anon_register_nudge": "",
+    "insufficient_credits": "This reel needs {cost} credits but you have {balance}. Try a shorter length.",
+    "register": "Accounts aren't open right now — just keep sending clips here.",
+}
+
+
 def render(purpose: str, facts: dict[str, Any] | None = None) -> str:
+    from app.config import get_settings
+
     facts = dict(facts or {})
+    if not get_settings().registration_enabled and purpose in NO_REGISTRATION:
+        return NO_REGISTRATION[purpose].format(**{k: v for k, v in facts.items()}) if NO_REGISTRATION[purpose] else ""
     if purpose == "first_contact":
         facts["name"] = f" {facts['name']}" if facts.get("name") else ""
     template = TEMPLATES.get(purpose, TEMPLATES["clarify"])
