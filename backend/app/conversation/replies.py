@@ -65,6 +65,9 @@ TEMPLATES: dict[str, str] = {
     "linked": "✅ Linked to {name}'s ReelChat account. Your reels will appear on your dashboard: {web_url}/dashboard",
     "already_linked": "This number is already linked to your account ✅",
     "rate_limited": "You're sending messages very quickly — please wait a minute.",
+    "login_confirmed": ("✅ You're signed in to the website - go back to the browser, it continues by itself.\n"
+                        "If this wasn't you, just ignore this message."),
+    "login_failed": "That login link didn't work or has expired. Get a new one on {web_url}/login",
     "suspended": "This account is suspended. Contact support if you think this is a mistake.",
     "clarify": "I'm not sure I got that. Send clips or photos, or describe the reel you want (e.g. *calm daily-life reel, 30 seconds*).",
     "ack_prefs": "Noted: {changes}.",

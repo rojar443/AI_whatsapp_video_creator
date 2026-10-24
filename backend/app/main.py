@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import auth, dev, me, projects, webhooks
+from app.api import admin, auth, dev, me, projects, webhooks
 from app.config import get_settings
 from app.db import get_engine, get_sessionmaker
 from app.logging_setup import setup_logging
@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
         log.exception("unhandled error on %s", request.url.path)
         return JSONResponse(status_code=500, content={"detail": "Internal error"})
 
-    for r in (auth.router, me.router, projects.router, webhooks.router, dev.router):
+    for r in (auth.router, me.router, projects.router, webhooks.router, admin.router, dev.router):
         app.include_router(r)
 
     @app.get("/api/health", tags=["health"])

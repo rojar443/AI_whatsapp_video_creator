@@ -68,7 +68,7 @@ def parse_update(update: dict[str, Any]) -> InboundMessage | None:
     caption = m.get("caption")
     if "text" in m:
         out.kind, out.text = "text", command_to_text(str(m["text"]))
-        if str(m["text"]).startswith("/start link_"):
+        if str(m["text"]).startswith(("/start link_", "/start login_")):
             out.text = str(m["text"]).strip()  # deep-link token, handled by the engine
     elif "video" in m:
         v = m["video"]

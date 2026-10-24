@@ -24,7 +24,8 @@ def user_out(db: Session, user: User) -> dict[str, Any]:
                                                  WhatsAppAccount.wa_id.like("tg:%")))
     pending = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.pending_user_id == user.id))
     return {
-        "id": user.id, "name": user.name, "email": user.email, "phone": user.phone_e164,
+        "id": user.id, "name": user.name, "email": user.email, "phone": user.phone_e164, "role": user.role,
+        "is_anonymous": user.is_anonymous,
         "email_verified": user.email_verified_at is not None, "credits": user.credits_balance,
         "created_at": iso(user.created_at),
         "whatsapp": {
@@ -35,6 +36,7 @@ def user_out(db: Session, user: User) -> dict[str, Any]:
             "business_number": get_settings().whatsapp_business_number,
         },
         "telegram": {"enabled": bool(get_settings().telegram_bot_token), "linked": tg is not None,
+                     "name": tg.profile_name if tg else None,
                      "linked_at": iso(tg.linked_at) if tg else None},
     }
 

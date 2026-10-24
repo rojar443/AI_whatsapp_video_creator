@@ -46,7 +46,10 @@ export default function Register() {
       <div className="container narrow card">
         <h1>Registration is closed</h1>
         <p className="muted">No account is needed. Just message the bot on Telegram.</p>
-        {cfg.telegram_bot && <a className="btn" href={`https://t.me/${cfg.telegram_bot}`}>Open in Telegram</a>}
+        <div className="row">
+          {cfg.telegram_bot && <a className="btn tg" href={`https://t.me/${cfg.telegram_bot}`}>Open in Telegram</a>}
+          <Link className="btn secondary" href="/login">Log in with Telegram</Link>
+        </div>
       </div>
     );
   }

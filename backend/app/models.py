@@ -113,6 +113,23 @@ class WhatsAppAccount(Base):
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
 
 
+class LoginToken(Base):
+    """One-time token behind the website's "Log in with Telegram" link / QR code.
+
+    The deep link `t.me/<bot>?start=login_<token>` is confirmed by the bot; the browser that asked for it redeems
+    it once with a secret it alone holds. Only hashes are stored.
+    """
+
+    __tablename__ = "login_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    poll_secret_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | confirmed | consumed | denied
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(TZ)
+    created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

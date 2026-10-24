@@ -21,6 +21,7 @@ from app.models import (
     GeneratedAsset,
     GenerationJob,
     JobStatus,
+    LoginToken,
     Message,
     ProjectAsset,
     ProjectStatus,
@@ -375,6 +376,7 @@ def purge_expired() -> None:
             owner = db.get(User, p.user_id)
             if owner and owner.is_anonymous:
                 db.delete(p)  # anonymous drafts are removed entirely
+        db.execute(delete(LoginToken).where(LoginToken.expires_at < now - timedelta(days=1)))
         db.execute(delete(Message).where(Message.created_at < now - timedelta(days=s.message_retention_days)))
         db.commit()
 

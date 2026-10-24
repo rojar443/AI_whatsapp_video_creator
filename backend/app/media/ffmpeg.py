@@ -7,7 +7,10 @@ disguised as MP4) can't make FFmpeg fetch URLs or read other files.
 from __future__ import annotations
 
 import json
-import resource
+try:  # POSIX only: resource limits are skipped on Windows (local development)
+    import resource
+except ImportError:  # pragma: no cover
+    resource = None
 import subprocess
 import textwrap
 from dataclasses import dataclass, field
@@ -31,7 +34,8 @@ def _limits() -> None:  # runs in the child process
 
 def _exec(cmd: list[str], cwd: str | None, timeout: int) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(cmd, capture_output=True, cwd=cwd, timeout=timeout, preexec_fn=_limits)
+        return subprocess.run(cmd, capture_output=True, cwd=cwd, timeout=timeout,
+                              preexec_fn=_limits if resource else None)
     except FileNotFoundError as e:
         raise FFmpegError(f"{cmd[0]} is not installed") from e
     except subprocess.TimeoutExpired as e:

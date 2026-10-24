@@ -9,6 +9,8 @@ Auth: `rc_session` HttpOnly cookie; every non-GET request needs `X-CSRF-Token` =
 | POST | `/api/auth/register` | `{name, email, password(≥10), phone, accept_terms}` → 201 + session; dev returns `dev_verification_url` |
 | POST | `/api/auth/login` · `/api/auth/logout` | 10 logins / 5 min / IP |
 | POST | `/api/auth/verify-email` | `{token}` (HMAC-signed, 48 h) |
+| POST | `/api/auth/telegram/start` | `{accept_terms}` → `{challenge_id, deep_link: https://t.me/<bot>?start=login_<token>, expires_in_minutes}`; sets HttpOnly `rc_login` (poll secret). The website shows the link as a button and a QR code. 503 if no bot is configured; 10 / 5 min / IP |
+| GET | `/api/auth/telegram/status?id=` | needs the `rc_login` cookie of the browser that started it (else 404). `{status: pending\|expired}`, or once the user pressed Start in the bot, **once**: `{status: confirmed, user, csrf_token}` + session cookies. 403 for a suspended account |
 | GET | `/api/me` | profile, credits, `whatsapp.status` linked/pending/not_linked |
 | GET | `/api/me/usage` | credit ledger |
 | POST | `/api/me/whatsapp/link` | → `{code, message: "LINK 123456", wa_me_url}`; send it **from the registered number**; merges anonymous drafts |
@@ -16,6 +18,17 @@ Auth: `rc_session` HttpOnly cookie; every non-GET request needs `X-CSRF-Token` =
 | POST | `/api/me/telegram/link` | → `{url: https://t.me/<bot>?start=link_<signed token>}`; opening it in Telegram links that chat (15 min) |
 | DELETE | `/api/me/telegram` | unlink Telegram |
 | POST | `/api/me/delete` | `{password}` — deletes account, chats, projects, files |
+
+A Telegram login signs in the user bound to the chat (an anonymous bot profile is created if the chat has none) and
+promotes anonymous profiles to regular accounts: projects and credits are kept, the balance is topped up to
+`DEFAULT_CREDITS` once, registered retention applies. Telegram ids listed in `ADMIN_TELEGRAM_IDS` get the admin role.
+
+## Admin (role `admin`)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/admin/users?q&limit&offset` | everyone who used the app, newest activity first: `{items:[{id,name,email,channels:[{kind: telegram\|whatsapp\|web,id,name,status}],registered,role,status,credits,projects,reels,first_seen,last_seen}], total}`. Account and usage data only: no message text or media links |
+| PATCH | `/api/admin/users/{id}` | `{status?: active\|suspended, credits_delta?}`; can't suspend yourself or go below 0 credits; audited |
 
 ## Projects & files
 | Method | Path | Notes |

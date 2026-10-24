@@ -4,7 +4,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -19,7 +19,7 @@ from app.api.deps import (
 from app.api.serializers import user_out
 from app.config import get_settings
 from app.db import get_db
-from app.models import User, UserSession, utcnow
+from app.models import LoginToken, User, UserSession, utcnow
 from app.security import (
     TokenError,
     hash_password,
@@ -31,6 +31,7 @@ from app.security import (
     verify_payload,
 )
 from app.services import credits
+from app.services import login as login_svc
 from app.services.audit import audit
 from app.services.email import send_email
 
@@ -160,3 +161,53 @@ def resend_verification(user: User = Depends(current_user)):
     if get_settings().is_dev:
         out["dev_verification_url"] = url
     return out
+
+
+# ------------------------------------------------------------------ Telegram login (link / QR code)
+LOGIN_COOKIE = "rc_login"  # poll secret: only the browser that asked for the token can redeem it
+
+
+class TelegramStartIn(BaseModel):
+    accept_terms: bool
+
+
+@router.post("/telegram/start", dependencies=[Depends(rate_limit("tglogin", 10, 300))])
+def telegram_login_start(body: TelegramStartIn, response: Response, db: Session = Depends(get_db)):
+    s = get_settings()
+    if not s.telegram_bot_token or not s.telegram_bot_username:
+        raise HTTPException(503, "Telegram login is not available on this server")
+    if not body.accept_terms:
+        raise HTTPException(422, "You must accept the terms and privacy policy")
+    row, token, secret = login_svc.create_token(db)
+    db.commit()
+    response.set_cookie(LOGIN_COOKIE, secret, max_age=s.link_code_ttl_minutes * 60, httponly=True,
+                        secure=s.cookie_secure, samesite="lax", path="/api/auth")
+    return {"challenge_id": row.id, "deep_link": login_svc.deep_link(token),
+            "expires_in_minutes": s.link_code_ttl_minutes}
+
+
+@router.get("/telegram/status")
+def telegram_login_status(id: str, request: Request, response: Response, db: Session = Depends(get_db)):
+    row = db.get(LoginToken, id)
+    secret = request.cookies.get(LOGIN_COOKIE)
+    if row is None or not secret or sha256_hex(secret) != row.poll_secret_hash:
+        raise HTTPException(404, "Unknown login")
+    if row.status == "denied":
+        raise HTTPException(403, "This account is unavailable")
+    if row.status == "consumed" or (row.status == "pending" and login_svc.is_expired(row)):
+        return {"status": "expired"}
+    if row.status == "pending":
+        return {"status": "pending"}
+    user = db.get(User, row.user_id)
+    if user is None or user.status != "active":
+        raise HTTPException(403, "This account is unavailable")
+    # Single use, atomically: concurrent polls cannot both start a session.
+    won = db.execute(update(LoginToken).where(LoginToken.id == row.id, LoginToken.status == "confirmed")
+                     .values(status="consumed")).rowcount
+    if won != 1:
+        return {"status": "expired"}
+    sess = _start_session(db, user, request, response)
+    audit(db, "auth.login", actor_id=user.id, details={"method": "telegram"}, ip=client_ip(request))
+    db.commit()
+    response.delete_cookie(LOGIN_COOKIE, path="/api/auth")
+    return {"status": "confirmed", "user": user_out(db, user), "csrf_token": sess.csrf_token}

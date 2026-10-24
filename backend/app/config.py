@@ -121,12 +121,18 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 24 * 7
     download_url_ttl_seconds: int = 24 * 3600
     link_code_ttl_minutes: int = 15
+    # Comma-separated Telegram user ids that get the admin role (e.g. "123456789,987654321").
+    admin_telegram_ids: str = ""
     message_retention_days: int = 90
     asset_retention_days: int = 30
     anon_retention_days: int = 3
     source_media_retention_days: int = 7
     job_max_attempts: int = 3
     job_retry_base_seconds: float = 10.0
+
+    @property
+    def admin_telegram_id_set(self) -> set[str]:
+        return {i.strip() for i in self.admin_telegram_ids.split(",") if i.strip()}
 
     @property
     def is_dev(self) -> bool:

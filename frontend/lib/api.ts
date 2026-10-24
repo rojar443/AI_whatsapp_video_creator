@@ -44,9 +44,11 @@ export type Me = {
   name: string;
   email: string;
   phone: string | null;
+  role: "user" | "admin";
+  is_anonymous: boolean;
   email_verified: boolean;
   credits: number;
-  telegram: { enabled: boolean; linked: boolean; linked_at: string | null };
+  telegram: { enabled: boolean; linked: boolean; name?: string | null; linked_at: string | null };
   whatsapp: { enabled: boolean; status: "linked" | "pending" | "not_linked"; number: string | null; linked_at: string | null; business_number: string };
 };
 

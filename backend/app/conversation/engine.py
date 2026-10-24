@@ -117,6 +117,9 @@ class ConversationEngine:
         if code:
             self._handle_link(code, wa, conv, msg, out)
             return
+        if msg.kind == "text" and (msg.body or "").startswith("/start login_"):
+            self._handle_telegram_login(msg.body.split("login_", 1)[1].strip(), wa, conv, msg, out)
+            return
         if msg.kind == "text" and (msg.body or "").startswith("/start link_"):
             self._handle_telegram_link(msg.body.split("link_", 1)[1].strip(), wa, conv, msg, out)
             return
@@ -125,6 +128,7 @@ class ConversationEngine:
             user = accounts.create_anonymous(self.db, wa)
             conv.user_id = user.id
         msg.user_id = user.id
+        accounts.apply_admin_ids(wa, user)
         if user.status != "active":
             out.text(replies.render("suspended"))
             return
@@ -436,6 +440,30 @@ class ConversationEngine:
         out.conv.user_id = user.id
         audit(self.db, "whatsapp.linked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id)
         out.text(replies.render("linked", {"name": user.name.split(" ")[0], "web_url": web}))
+
+    def _handle_telegram_login(self, token: str, wa: WhatsAppAccount, conv: Conversation, msg: Message,
+                               out: Outbox) -> None:
+        """`/start login_<token>` from the website's "Log in with Telegram" link or QR code."""
+        from app.services import login
+
+        web = self.s.web_base_url
+        row = login.find_open(self.db, token) if wa.wa_id.startswith("tg:") else None
+        if row is None:
+            out.text(replies.render("login_failed", {"web_url": web}))
+            return
+        user = self.db.get(User, wa.user_id) if wa.user_id else None
+        if user is None:
+            user = accounts.create_anonymous(self.db, wa)
+        conv.user_id = out.conv.user_id = msg.user_id = user.id
+        accounts.apply_admin_ids(wa, user)
+        if user.status != "active":
+            row.status = "denied"
+            out.text(replies.render("suspended"))
+            return
+        accounts.promote_anonymous(self.db, user, wa)
+        row.status, row.user_id = "confirmed", user.id
+        audit(self.db, "auth.telegram_login_confirmed", actor_id=user.id, target_type="login_token", target_id=row.id)
+        out.text(replies.render("login_confirmed"))
 
     def _handle_telegram_link(self, token: str, wa: WhatsAppAccount, conv: Conversation, msg: Message,
                               out: Outbox) -> None:

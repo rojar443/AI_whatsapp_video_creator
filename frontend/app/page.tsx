@@ -26,6 +26,7 @@ export default function Home() {
           </p>
           <div className="row">
             <StartButton />
+            <Link className="btn secondary" href="/login">Log in</Link>
             <RegisterLink />
           </div>
           <p className="small muted" style={{ marginTop: 12 }}>

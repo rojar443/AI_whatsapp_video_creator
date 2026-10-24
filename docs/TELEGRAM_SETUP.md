@@ -43,3 +43,17 @@ reel with a calm voiceover."* → tap **✅ Proceed** → the reel arrives as a 
 * Only private chats are served; groups and channels are ignored.
 * Anonymous quotas apply until the chat is linked to an account (same as WhatsApp).
 * Chats are stored as `tg:<chat_id>`; the bot only replies to people who message it first.
+
+## Website login with Telegram (link or QR)
+The website's **Log in with Telegram** button shows a one-time `t.me` link and the same link as a QR code (scan it with
+your phone when you're on a computer). Press **Start** in the bot and the browser is signed in. Anonymous bot users keep
+their reels and credits. Needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME`.
+
+## Admin
+Put your Telegram user id in `ADMIN_TELEGRAM_IDS` (ask @userinfobot for it), log in with Telegram once, and an **Admin**
+tab appears listing everyone who has used the app.
+
+## One poller per bot token
+Telegram lets only **one** process call `getUpdates` for a token. If two developers (or a Docker `telegram` service and a
+local run) use the same token, both see `409 Conflict`. Create a separate bot per developer with @BotFather, or use
+webhooks in production.

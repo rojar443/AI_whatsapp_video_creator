@@ -39,6 +39,7 @@ export default function Nav() {
             <>
               {link("/dashboard", "Videos")}
               {link("/account", "Account")}
+              {me.role === "admin" && link("/admin", "Admin")}
               {dev && link("/dev/whatsapp", "WhatsApp simulator")}
               <button className="btn secondary small" onClick={logout}>
                 Log out
@@ -48,14 +49,14 @@ export default function Nav() {
             <>
               {link("/#how", "How it works")}
               {dev && link("/dev/whatsapp", "Try the simulator")}
-              {cfg?.registration_enabled && link("/login", "Log in")}
+              {link("/login", "Log in")}
               {cfg?.registration_enabled && (
-                <Link href="/register" className="btn small">
-                  Get started
+                <Link href="/register" className="btn secondary small">
+                  Create account
                 </Link>
               )}
               {cfg?.telegram_bot && (
-                <a href={`https://t.me/${cfg.telegram_bot}`} className="btn small" target="_blank" rel="noreferrer">
+                <a href={`https://t.me/${cfg.telegram_bot}`} className="btn tg small" target="_blank" rel="noreferrer">
                   Open in Telegram
                 </a>
               )}
