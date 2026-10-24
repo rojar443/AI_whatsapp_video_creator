@@ -1,0 +1,8 @@
+# SITE_ADDRESS=your.domain.com  → automatic HTTPS (Let's Encrypt).   SITE_ADDRESS=:80 → plain HTTP for a first test.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	request_body {
+		max_size 120MB
+	}
+	reverse_proxy web:3100
+}
