@@ -1,0 +1,58 @@
+# Local development stack. Production notes: docs/DEPLOYMENT.md
+name: reelchat
+
+x-backend: &backend
+  image: reelchat-backend:dev
+  build: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://reelchat:reelchat@postgres:5432/reelchat
+    STORAGE_LOCAL_DIR: /app/var/storage
+    WORK_DIR: /app/var/work
+  volumes:
+    - media:/app/var
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: reelchat
+      POSTGRES_PASSWORD: reelchat
+      POSTGRES_DB: reelchat
+    ports: ["127.0.0.1:55433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reelchat"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *backend
+    ports: ["127.0.0.1:8100:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.jobs.worker"]
+    depends_on:
+      api:
+        condition: service_healthy   # api runs the migrations first
+
+  web:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+    ports: ["127.0.0.1:3100:3100"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  media:

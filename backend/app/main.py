@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import select, text
+
+from app.api import admin, auth, dev, me, projects, webhooks
+from app.config import get_settings
+from app.db import get_engine, get_sessionmaker
+from app.logging_setup import setup_logging
+
+log = logging.getLogger(__name__)
+
+
+def bootstrap_admin() -> None:
+    """Create/promote the admin from ADMIN_EMAIL/ADMIN_PASSWORD (idempotent)."""
+    s = get_settings()
+    if not (s.admin_email and s.admin_password):
+        return
+    from app.models import User, utcnow
+    from app.security import hash_password
+    from app.services import credits
+
+    with get_sessionmaker()() as db:
+        user = db.scalar(select(User).where(User.email == s.admin_email.lower()))
+        if user is None:
+            user = User(email=s.admin_email.lower(), name="Admin", password_hash=hash_password(s.admin_password),
+                        phone_e164="+10000000000", role="admin", email_verified_at=utcnow())
+            db.add(user)
+            db.flush()
+            credits.grant(db, user, 100, key=f"signup:{user.id}")
+        elif user.role != "admin":
+            user.role = "admin"
+        db.commit()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    setup_logging()
+    s = get_settings()
+    if s.app_env == "production" and s.secret_key.startswith("dev-"):
+        raise RuntimeError("Set SECRET_KEY in production")
+    if s.app_env == "production" and s.whatsapp_app_secret == "dev-app-secret":
+        raise RuntimeError("Set WHATSAPP_APP_SECRET in production")
+    try:
+        bootstrap_admin()
+    except Exception:  # noqa: BLE001 - DB may not be migrated yet
+        log.exception("admin bootstrap skipped")
+    yield
+
+
+def create_app() -> FastAPI:
+    s = get_settings()
+    app = FastAPI(
+        title="ReelChat API",
+        version="0.1.0",
+        description="WhatsApp-first AI short-video creator",
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+    )
+    app.add_middleware(CORSMiddleware, allow_origins=s.cors_origin_list, allow_credentials=True,
+                       allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                       allow_headers=["content-type", "x-csrf-token"])
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        if s.cookie_secure:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
+    @app.exception_handler(Exception)
+    async def unhandled(request: Request, exc: Exception):
+        log.exception("unhandled error on %s", request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Internal error"})
+
+    for r in (auth.router, me.router, projects.router, webhooks.router, admin.router, dev.router):
+        app.include_router(r)
+
+    @app.get("/api/health", tags=["health"])
+    def health():
+        try:
+            with get_engine().connect() as c:
+                c.execute(text("SELECT 1"))
+            db_ok = True
+        except Exception:  # noqa: BLE001
+            db_ok = False
+        return {"ok": db_ok, "db": db_ok, "env": s.app_env}
+
+    @app.get("/api/config", tags=["health"])
+    def public_config():
+        return {"app_name": s.app_name, "dev_mode": s.is_dev, "whatsapp_business_number": s.whatsapp_business_number}
+
+    return app
+
+
+app = create_app()
