@@ -69,6 +69,15 @@ TTS_PROVIDER=mock
 ```
 `<your-web-domain>` is known after step 3; add these three URL variables then and redeploy.
 
+### If "Railpack failed to prepare the build" keeps happening
+Railway is not picking up the Root Directory. Skip it: leave **Root Directory empty** and instead add a variable that
+names a Dockerfile in the repo root, built with the whole repo as context:
+* `backend` service: `RAILWAY_DOCKERFILE_PATH=Dockerfile.backend` (its `CMD` already runs `bash start_all.sh`)
+* `web` service: `RAILWAY_DOCKERFILE_PATH=Dockerfile.web`
+
+Everything else (variables, volume, domains) stays the same. In that mode `backend/railway.json` is not read, so the
+health check is not applied; that is fine.
+
 ## 3. The `web` service
 1. In the project: **+ New** → **GitHub Repo** → the same repo. Rename it `web`.
 2. **Source → Root Directory:** `/frontend`.
