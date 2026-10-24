@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import TelegramCard from "@/components/TelegramCard";
 import WhatsAppCard from "@/components/WhatsAppCard";
 import { api, fmtDate } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
@@ -47,10 +48,11 @@ export default function Account() {
           <dl className="kv">
             <dt>Name</dt><dd>{me.name}</dd>
             <dt>Email</dt><dd>{me.email} {me.email_verified ? <span className="badge ok">verified</span> : <span className="badge pending">unverified</span>}</dd>
-            <dt>WhatsApp</dt><dd>{me.phone}</dd>
+            <dt>WhatsApp</dt><dd>{me.phone ?? "—"}</dd>
           </dl>
         </div>
         <WhatsAppCard me={me} onChange={refresh} />
+        <TelegramCard me={me} onChange={refresh} />
       </div>
 
       <div className="card">

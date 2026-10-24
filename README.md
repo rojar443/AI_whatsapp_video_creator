@@ -1,42 +1,39 @@
-# ReelChat — WhatsApp-first AI short-video creator (MVP)
+# ReelChat — AI WhatsApp reel editor (MVP)
 
-Users register on the website, link their WhatsApp number, then **describe a video by text or voice note**.
-An AI agent asks only for what's missing, shows a summary, and — after an explicit "yes" — generates a vertical
-MP4 asynchronously and sends it back in the same chat. Users can request revisions and see their history on the
-dashboard. Admins can switch the AI agent and video providers without code changes.
+Users send the raw clips and photos on their phone to a WhatsApp number, describe the vibe by text or voice
+note, approve a plan that shows which moments were picked and why, and get a finished 9:16 reel back in the
+same chat. No app, no editing skills, no signup needed for the first draft.
 
-* **Architecture & design decisions:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-* **Setup, running, tests, deployment:** [docs/SETUP.md](docs/SETUP.md)
-* **API reference:** [docs/API.md](docs/API.md) (live: `/api/docs`)
-* **Providers & cost assumptions:** [docs/PROVIDERS_AND_COSTS.md](docs/PROVIDERS_AND_COSTS.md)
-* **Example WhatsApp conversations:** [docs/CONVERSATIONS.md](docs/CONVERSATIONS.md)
-* **Implemented vs mocked vs production prerequisites:** [docs/STATUS.md](docs/STATUS.md)
+**Pipeline:** quality filter (dark/shaky/duplicate) → scene split → moment scoring (Gemini vision vs. the genre
+playbook) → hook/build/payoff sequencing → AI narration script → ElevenLabs voice → captions from the script →
+licensed music → FFmpeg render (crop, trim, photo motion, grade, transitions, title, ducked mix) → compression
+to fit WhatsApp's 16 MB → validation → delivery. **Every step is a configurable slot** for your own agents
+(Python plugin or HTTP service) — see [docs/PIPELINE_AGENTS.md](docs/PIPELINE_AGENTS.md).
 
-## Quick start (Docker)
+| Doc | |
+|---|---|
+| [docs/PRD.md](docs/PRD.md) | short product requirements, limits, risks, external services |
+| [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) | connect a real WhatsApp number (Meta app, token, webhook, Cloudflare Tunnel) |
+| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | use a Telegram bot as the input channel (works on localhost) |
+| [docs/SETUP.md](docs/SETUP.md) | run locally, tests, production deployment |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | design decisions, state machine, ER diagram, code map |
+| [docs/PIPELINE_AGENTS.md](docs/PIPELINE_AGENTS.md) | plug in your own processing agents |
+| [docs/API.md](docs/API.md) | HTTP API (live at `/api/docs`) |
+| [docs/CONVERSATIONS.md](docs/CONVERSATIONS.md) | example WhatsApp conversations |
+| [docs/PLAYBOOK_RESEARCH.md](docs/PLAYBOOK_RESEARCH.md) | genre playbook research plan |
+| [docs/STATUS.md](docs/STATUS.md) | implemented vs demo stand-ins vs production prerequisites |
 
+## Quick start (offline demo)
 ```bash
-cp .env.example .env            # defaults run fully offline: rules agent, mock video, dev WhatsApp
-docker compose up --build       # web :3100 · api :8100 · postgres :55433 (all bound to 127.0.0.1)
+cp .env.example .env
+sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=mock/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
+docker compose up --build -d
 ```
-
-1. Open http://localhost:3100/register, create an account (dev mode shows the email-verification link).
-2. Dashboard → **Get link code**.
-3. Open **WhatsApp simulator** (top nav), send `LINK <code>`.
-4. Send *"Create a motivational Reel about fitness"*, answer the question, tap **✅ Generate**.
-5. Watch the progress messages; the (watermarked mock) video arrives in the chat and on the dashboard.
-6. Send *"Make it more cinematic and use a faster pace"* → confirm → revision 2.
-
-Admin: set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`, log in, open **Admin**.
-
-## Tests
-
-```bash
-docker compose run --rm --no-deps api pytest            # full suite incl. FFmpeg rendering (SQLite)
-cd backend && uv venv && uv pip install -e ".[all,dev]" && .venv/bin/pytest   # local; FFmpeg tests skip if ffmpeg is missing
-```
+Open http://localhost:3100/dev/whatsapp → 📎 → **Send sample footage** → *"That's all. Make it a cinematic
+travel reel with a calm voiceover."* → **✅ Proceed**. For the real thing, follow
+[docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) and set the Gemini / ElevenLabs keys.
 
 ## Stack
-
-FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL (also the task queue) · FFmpeg · espeak-ng · Next.js 15 ·
-Docker Compose. AI providers: Anthropic Claude (initial), OpenAI / OpenAI-compatible (Ollama, vLLM), Gemini,
-plus an offline rules agent. WhatsApp Business Platform (Cloud API). S3-compatible storage.
+FastAPI · SQLAlchemy/Alembic · PostgreSQL · Redis + Celery · FFmpeg · Next.js 15 · Docker Compose ·
+Cloudflare Tunnel. AI: Google Gemini (initial), adapters for OpenAI/compatible (Ollama, vLLM) and Anthropic, plus
+an offline rules agent. Voice: ElevenLabs (espeak/mock offline). Messaging: WhatsApp Cloud API and Telegram Bot API (+ dev simulator).

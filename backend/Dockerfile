@@ -1,15 +1,23 @@
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    UV_HTTP_TIMEOUT=600 UV_CONCURRENT_DOWNLOADS=4 UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=0
 
-# ffmpeg (with libass for captions), espeak-ng (free offline TTS), fonts incl. Indic scripts.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg espeak-ng fonts-dejavu-core fonts-lohit-deva fonts-lohit-mlym fonts-lohit-taml curl \
+# ffmpeg (libass for captions, zoompan/xfade) + fonts. APT_EXTRA=espeak-ng adds the offline demo voice.
+ARG APT_EXTRA=""
+RUN apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 update \
+    && apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 install -y --no-install-recommends \
+        ffmpeg fonts-dejavu-core curl ${APT_EXTRA} \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install --no-cache-dir --default-timeout=600 uv
+
 WORKDIR /app
+# Extra provider SDKs: e.g. --build-arg EXTRAS=dev,s3,anthropic,openai
+ARG EXTRAS=dev
 COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py && pip install ".[all,dev]" && rm -rf app
+# dependencies only — the app itself runs from /app (no stub package in site-packages)
+RUN uv pip install --system -r pyproject.toml $(echo ",${EXTRAS}" | sed 's/,\([a-z0-9]\)/ --extra \1/g')
 COPY . .
 RUN useradd --create-home --uid 1000 reelchat && mkdir -p /app/var && chown -R reelchat /app/var
 USER reelchat

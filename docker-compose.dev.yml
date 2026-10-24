@@ -1,0 +1,12 @@
+# Dev override: run the existing backend image with the live source mounted (no rebuild after code changes).
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --no-build
+x-src: &src
+  volumes:
+    - ./backend:/app
+    - media:/app/var
+    - ./backend/music:/app/music:ro
+
+services:
+  api: {<<: *src}
+  worker: {<<: *src}
+  telegram: {<<: *src}

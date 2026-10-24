@@ -1,13 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useConfig } from "@/lib/useConfig";
 
 export default function Register() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [devUrl, setDevUrl] = useState("");
+  const [phone, setPhone] = useState("");
+  const cfg = useConfig();
+
+  useEffect(() => {
+    setPhone(new URLSearchParams(window.location.search).get("phone") || "");
+  }, []);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -51,7 +58,7 @@ export default function Register() {
     <div className="container narrow">
       <div className="card">
         <h1>Create your account</h1>
-        <p className="muted">You'll get 10 free credits to try it out.</p>
+        <p className="muted">Keep your reels, get 10 credits, and see your history.</p>
         {error && <div className="alert error" role="alert">{error}</div>}
         <form onSubmit={submit}>
           <div className="field">
@@ -62,11 +69,14 @@ export default function Register() {
             <label htmlFor="email">Email</label>
             <input id="email" name="email" type="email" required autoComplete="email" />
           </div>
+          {cfg?.whatsapp_enabled && (
           <div className="field">
-            <label htmlFor="phone">WhatsApp number</label>
-            <input id="phone" name="phone" required placeholder="+91 98765 43210" autoComplete="tel" />
-            <p className="small muted" style={{ margin: "4px 0 0" }}>International format, with country code.</p>
+            <label htmlFor="phone">WhatsApp number (optional)</label>
+            <input id="phone" name="phone" placeholder="+91 98765 43210" autoComplete="tel"
+                   value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <p className="small muted" style={{ margin: "4px 0 0" }}>International format, with country code. Skip it if you only use Telegram.</p>
           </div>
+          )}
           <div className="field">
             <label htmlFor="password">Password</label>
             <input id="password" name="password" type="password" required minLength={10} autoComplete="new-password" />
@@ -77,7 +87,7 @@ export default function Register() {
               <input type="checkbox" name="terms" required />
               <span>
                 I agree to the <Link href="/terms">Terms</Link> and <Link href="/privacy">Privacy Policy</Link>, including
-                AI processing of my messages and voice notes.
+                AI processing of my clips, photos, messages and voice notes.
               </span>
             </label>
           </div>

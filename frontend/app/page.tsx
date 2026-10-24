@@ -1,13 +1,13 @@
 import Link from "next/link";
+import StartButton from "@/components/StartButton";
 
 const demo: [string, "in" | "out"][] = [
   ["🎞️ beach.mp4 · hike.mp4 · old-town.mp4", "out"],
-  ["I want to make a travel reel - cinematic adventure from these videos", "out"],
-  ["Love these clips! Where will you post it, and how long should it be? I'll pick the best moments.", "in"],
-  ["Instagram, 30 seconds", "out"],
-  ["Here's your reel plan 🎬\n• Vibe: Cinematic adventure\n• Clips: 3 uploaded (about 2 min)\n• Length: 30 s · epic music\nCost: 2 credits. Reply yes to edit.", "in"],
-  ["yes", "out"],
-  ["✅ Your reel is ready!", "in"],
+  ["I received 3 clips. Send more, or tell me what you want.", "in"],
+  ["I want a travel reel - cinematic adventure from these videos", "out"],
+  ["Plan: ~30 s 9:16 reel · opening on the best landscape shot · 5 strongest moments · cinematic grade · calm narration · soft music. Proceed?", "in"],
+  ["Yes", "out"],
+  ["Your reel is ready! 🎬 Want any changes?", "in"],
   ["Make the opening faster and end on the sunset", "out"],
 ];
 
@@ -16,18 +16,22 @@ export default function Home() {
     <>
       <section className="hero">
         <div>
-          <h1>Make Reels and Shorts by chatting on WhatsApp</h1>
+          <h1>
+            Turn your clips into <span className="pop">Reels</span> by chatting on Telegram
+          </h1>
           <p className="lead">
-            Send your clips and tell us the story you want - a travel adventure, a product launch, a family highlight.
-            ReelChat asks a couple of quick questions, shows you a plan, and sends the finished vertical reel back to the same chat.
+            Send the photos and videos sitting on your phone to our Telegram bot, say the vibe you want, approve the
+            plan, and get a finished vertical reel for Instagram or YouTube Shorts in the same chat. No editing skills.
           </p>
           <div className="row">
-            <Link className="btn" href="/register">Create free account</Link>
-            <Link className="btn secondary" href="#how">How it works</Link>
+            <StartButton />
+            <Link className="btn secondary" href="/register">Create account</Link>
           </div>
-          <p className="small muted" style={{ marginTop: 12 }}>10 free credits · no editing skills needed</p>
+          <p className="small muted" style={{ marginTop: 12 }}>
+            Your first draft doesn't need an account — just message the bot.
+          </p>
         </div>
-        <div className="phone" aria-label="Example WhatsApp conversation">
+        <div className="phone" aria-label="Example Telegram conversation">
           <div className="chat">
             {demo.map(([t, d], i) => (
               <div key={i} className={`bubble ${d}`}>{t}</div>
@@ -41,21 +45,21 @@ export default function Home() {
         <div className="grid grid-2" style={{ marginTop: 16 }}>
           <div className="card">
             <ol className="steps">
-              <li><strong>Sign up</strong> with your email and WhatsApp number.</li>
-              <li><strong>Link WhatsApp</strong> by sending the 6-digit code we show you.</li>
-              <li><strong>Send your videos</strong> and describe the reel you want - vibe, length, platform - by text or voice note.</li>
-              <li><strong>Approve the plan.</strong> Nothing is generated (or charged) until you say yes.</li>
-              <li><strong>Get your reel</strong> in the chat, and ask for changes any time.</li>
+              <li><strong>Send your clips and photos</strong> to the bot in Telegram.</li>
+              <li><strong>Say what you want</strong> — "cinematic travel reel, calm voiceover" — by text or voice note.</li>
+              <li><strong>Check the plan.</strong> See which moments were picked and why. Nothing is made until you say yes.</li>
+              <li><strong>Get your reel</strong> in the chat, then ask for changes like "shorter" or "start with the beach".</li>
+              <li><strong>Register later</strong> to keep your history and get more credits.</li>
             </ol>
           </div>
           <div className="grid grid-2">
             {[
-              ["Your footage, edited for you", "Upload your clips; we find the best moments, cut them to music and format for vertical."],
-              ["Voice notes", "Speak in English, Hindi, Malayalam and more."],
-              ["Made for vertical", "9:16 MP4 for Instagram Reels, YouTube Shorts and more."],
-              ["Revisions", "\"Make it more cinematic\", \"start with the sunset\" — just ask."],
-              ["Your history", "Every project, revision and download on your dashboard."],
-              ["Fair credits", "Failed videos are refunded automatically. No double charges."],
+              ["Best moments, picked for you", "Dark, shaky and duplicate shots are dropped; the strongest moments are arranged hook → highlights → payoff."],
+              ["Genre playbooks", "Travel and daily-life reels follow curated editing rules for pacing, structure and look."],
+              ["Narration & captions", "A short AI-written script, read by a natural voice. Captions come from the script, so silent clips work."],
+              ["Photos come alive", "Photos get a slow zoom or pan so they sit naturally between your clips."],
+              ["Made for sharing", "9:16 MP4 sized to send in the chat, or a secure download link."],
+              ["Fair credits", "Failed edits are refunded automatically. No double charges."],
             ].map(([t, d]) => (
               <div className="card" key={t}>
                 <h3>{t}</h3>

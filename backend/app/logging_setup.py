@@ -28,5 +28,7 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(logging.DEBUG if get_settings().app_env == "development" else logging.INFO)
-    for noisy in ("httpx", "httpcore", "sqlalchemy.engine", "uvicorn.access", "botocore", "urllib3"):
+    for noisy in ("httpx", "httpcore", "sqlalchemy.engine", "uvicorn.access", "botocore", "urllib3", "kombu", "amqp",
+                  "google_genai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    logging.getLogger("celery").setLevel(logging.INFO)

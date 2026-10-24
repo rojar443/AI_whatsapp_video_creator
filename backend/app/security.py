@@ -86,6 +86,13 @@ def verify_asset_signature(asset_id: str, exp: int, sig: str) -> str | None:
     return None
 
 
+def sign_pipeline_file(path: str, ttl_seconds: int = 3600) -> str:
+    """Signed URL for a local work file, for external pipeline agents (see api/files.py)."""
+    s = get_settings()
+    token = sign_payload({"p": str(path)}, "pipeline-file", ttl_seconds)
+    return f"{s.public_base_url.rstrip('/')}/api/pipeline-files/{token}"
+
+
 def verify_meta_signature(raw_body: bytes, header_value: str | None, app_secret: str) -> bool:
     """Validates X-Hub-Signature-256 (HMAC-SHA256 of the raw body with the app secret)."""
     if not header_value or not header_value.startswith("sha256="):

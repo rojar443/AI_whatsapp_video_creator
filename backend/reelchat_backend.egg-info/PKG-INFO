@@ -1,0 +1,28 @@
+Metadata-Version: 2.4
+Name: reelchat-backend
+Version: 0.2.0
+Summary: WhatsApp-first AI reel editor - API and Celery worker
+Requires-Python: >=3.12
+Requires-Dist: fastapi>=0.115
+Requires-Dist: uvicorn[standard]>=0.30
+Requires-Dist: sqlalchemy>=2.0.30
+Requires-Dist: alembic>=1.13
+Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pydantic-settings>=2.3
+Requires-Dist: email-validator>=2.1
+Requires-Dist: argon2-cffi>=23.1
+Requires-Dist: httpx>=0.27
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: celery[redis]>=5.4
+Requires-Dist: redis>=5
+Requires-Dist: pyyaml>=6
+Requires-Dist: google-genai>=1.0
+Provides-Extra: anthropic
+Requires-Dist: anthropic>=0.70; extra == "anthropic"
+Provides-Extra: openai
+Requires-Dist: openai>=1.40; extra == "openai"
+Provides-Extra: s3
+Requires-Dist: boto3>=1.34; extra == "s3"
+Provides-Extra: dev
+Requires-Dist: pytest>=8; extra == "dev"

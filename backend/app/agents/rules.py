@@ -1,66 +1,50 @@
-"""Deterministic keyword-based agent.
-
-Used for development, tests and as an automatic fallback when an LLM provider fails.
-It is intentionally conservative: when unsure it returns intent 'other'.
-"""
+"""Deterministic keyword agent: offline default for development/tests and the automatic
+fallback when an LLM provider fails. Conservative — returns 'other' when unsure."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from app.agents.base import AgentContext, AgentProvider, MessageAnalysis, Scene, Script
-from app.conversation import requirements as req
-from app.conversation.safety import is_explicit_confirmation, normalize
+from app.agents.base import AgentContext, AgentProvider, MessageAnalysis
+from app.conversation.safety import is_done_phrase, is_explicit_confirmation, normalize
+from app.pipeline.contracts import EditContext, PlanItem, ScriptLine, ScriptOutput
 
-LANG_WORDS = {
-    "english": ["english", "inglish"],
-    "hindi": ["hindi", "हिंदी", "हिन्दी"],
-    "malayalam": ["malayalam", "മലയാളം"],
-    "tamil": ["tamil", "தமிழ்"],
-    "spanish": ["spanish", "español", "espanol"],
-    "french": ["french", "français", "francais"],
+GENRE_WORDS = {
+    "travel": ["travel", "trip", "vacation", "holiday", "journey", "tour", "road trip", "beach", "mountains",
+               "hiking", "sightseeing", "backpacking", "getaway"],
+    "daily_life": ["daily life", "day in my life", "day in the life", "everyday", "daily", "routine", "vlog",
+                   "my day", "family", "weekend", "life update", "morning routine"],
 }
-UNSUPPORTED_LANGS = ["german", "japanese", "chinese", "mandarin", "arabic", "russian", "korean",
-                     "portuguese", "italian", "bengali", "telugu", "kannada", "marathi"]
 VIBE_WORDS = {
-    "motivational": ["motivational", "motivating", "motivation", "hype", "pump up"],
-    "funny": ["funny", "humor", "humour", "comedy", "hilarious", "comic", "lol"],
-    "emotional": ["emotional", "touching", "heartfelt", "sad", "sentimental"],
-    "inspirational": ["inspirational", "inspiring", "uplifting"],
-    "educational": ["educational", "informative", "explainer", "tutorial", "tips", "how to", "how-to"],
-    "calm": ["calm", "relaxing", "peaceful", "chill", "soothing"],
-    "energetic": ["energetic", "high energy", "high-energy", "exciting"],
+    "cinematic": ["cinematic", "epic", "filmic", "movie"],
+    "motivational": ["motivational", "motivating", "inspiring", "hype"],
+    "funny": ["funny", "fun", "humor", "humour", "comedy", "hilarious"],
+    "emotional": ["emotional", "touching", "heartfelt", "nostalgic", "sentimental"],
+    "professional": ["professional", "corporate", "business", "clean"],
+    "educational": ["educational", "informative", "tips", "how to", "tutorial", "guide"],
+    "calm": ["calm", "relaxing", "chill", "peaceful", "cozy", "cosy", "soft"],
 }
 STYLE_WORDS = {
-    "cinematic": ["cinematic", "filmic", "movie-like", "epic look"],
-    "realistic": ["realistic", "real footage", "live action", "live-action", "photorealistic"],
-    "animation": ["animation", "animated", "cartoon", "2d", "3d"],
-    "documentary": ["documentary", "docu"],
-    "minimalist": ["minimalist", "minimal", "clean look", "simple look"],
+    "cinematic": ["cinematic look", "cinematic style", "film look", "cinematic grade", "cinematic"],
+    "natural": ["natural", "realistic", "true to life"],
+    "vibrant": ["vibrant", "colorful", "colourful", "bright", "punchy", "saturated"],
+    "minimalist": ["minimal", "minimalist", "simple", "clean look"],
+    "documentary": ["documentary", "docu", "raw"],
 }
-MUSIC_WORDS = {
-    "upbeat": ["upbeat", "energetic", "happy", "fun", "pumping"],
-    "calm": ["calm", "soft", "relaxing", "chill", "lofi", "lo-fi", "ambient"],
-    "dramatic": ["dramatic", "epic", "intense"],
-    "inspiring": ["inspiring", "inspirational", "uplifting"],
-}
-NUMBER_WORDS = {"fifteen": 15, "thirty": 30, "forty five": 45, "forty-five": 45, "sixty": 60}
-
-FILLER = {
-    "a", "an", "the", "me", "my", "some", "short", "quick", "video", "videos", "reel", "reels",
-    "clip", "please", "pls", "create", "make", "generate", "produce", "want", "need", "i", "can",
-    "you", "could", "would", "like", "to", "for", "insta", "instagram", "youtube", "shorts",
-    "tiktok", "vertical", "second", "seconds", "sec", "s", "and", "with", "of", "new", "one",
-}
-
-GREETING_RE = re.compile(r"^(hi|hello|hey|hii+|namaste|namaskaram|good (morning|afternoon|evening)|yo)\b")
+OTHER_LANGS = ["malayalam", "hindi", "tamil", "spanish", "french", "german", "arabic", "japanese", "portuguese"]
+INSTRUCTION_RE = re.compile(
+    r"\b(start|open|begin|end|finish|close)\s+(with|on)\b|\b(use|include|remove|drop|skip|cut|trim|crop|focus on|"
+    r"emphasi[sz]e|highlight|more of|less of|faster|slower|speed up|slow down|shorter|longer|zoom|reorder|"
+    r"put|move|swap)\b",
+    re.I,
+)
+OFF_TOPIC_RE = re.compile(
+    r"\b(weather|news|joke|recipe|homework|code|translate|who is|what is the capital|stock price|"
+    r"bitcoin|football score|write (me )?(an? )?(essay|poem|email))\b", re.I)
+GREETING_RE = re.compile(r"^(hi|hello|hey|hii+|namaste|good (morning|afternoon|evening)|yo)\b")
 
 
-def _has(text: str, words: list[str]) -> bool:
-    return any(re.search(rf"(?<![\w]){re.escape(w)}(?![\w])", text) for w in words)
-
-
-def _first_match(text: str, table: dict[str, list[str]]) -> str | None:
+def _first(text: str, table: dict[str, list[str]]) -> str | None:
     best: tuple[int, str] | None = None
     for key, words in table.items():
         for w in words:
@@ -72,267 +56,154 @@ def _first_match(text: str, table: dict[str, list[str]]) -> str | None:
 
 class RulesAgentProvider(AgentProvider):
     name = "rules"
-    is_llm = False
 
-    # ------------------------------------------------------------------ extraction
     def _extract(self, raw: str, ctx: AgentContext) -> tuple[dict[str, Any], list[str]]:
         t = normalize(raw)
-        fields: dict[str, Any] = {}
+        f: dict[str, Any] = {}
         unsupported: list[str] = []
-        work = t
 
-        # Music first, so "inspiring music" doesn't also set the vibe.
-        m = re.search(r"\b(no|without)\s+(background\s+)?music\b", work)
+        if g := _first(t, GENRE_WORDS):
+            f["genre"] = g
+        # music before vibe so "soft music" doesn't become a vibe only
+        if re.search(r"\b(no|without)\s+(music|audio|sound)\b|\b(mute|silent)\b", t):
+            f["music"] = "none"
+        elif re.search(r"\b(keep|retain|original|real)\s+(the\s+)?(original\s+)?(audio|sound|voices?|speech)\b", t):
+            f["music"] = "original"
+        elif re.search(r"\b(music|song|soundtrack|beat|track)\b", t):
+            f["music"] = "licensed"
+            if re.search(r"\b(song|track)\s+by\b|\bby\s+[a-z]+ [a-z]+\b.*\bsong\b", t):
+                unsupported.append("specific commercial songs (I use licensed library music)")
+        # narration
+        if re.search(r"\b(no|without)\s+(voice ?over|narration|narrator|voice)\b", t):
+            f["narration"] = "none"
+        elif re.search(r"\b(my (own )?voice|in my voice|clone)\b", t):
+            f["narration"] = "default"
+            unsupported.append("narration in your own cloned voice (coming soon — I'll use an AI voice)")
+        elif re.search(r"\b(voice ?over|narration|narrate|narrator|storytelling)\b", t):
+            f["narration"] = "default"
+        # captions
+        if re.search(r"\b(no|without|remove|turn off)\s+(the\s+)?(captions?|subtitles?|text)\b", t):
+            f["captions"] = False
+        elif re.search(r"\b(captions?|subtitles?)\b", t):
+            f["captions"] = True
+        # duration
+        m = re.search(r"\b(\d{1,3})\s*-?\s*(s|sec|secs|second|seconds)\b", t)
         if m:
-            fields["music"] = "none"
-            work = work.replace(m.group(0), " ")
-        else:
-            m = re.search(r"([\w-]+)\s+(?:background\s+)?(music|soundtrack|track|beat)s?\b", work)
-            if m and (mood := _first_match(m.group(1), MUSIC_WORDS)):
-                fields["music"] = mood
-                work = work.replace(m.group(0), " ")
-            elif re.search(r"\bwith music\b", work):
-                work = work.replace("with music", " ")
-        if re.search(r"\b(song|songs)\b", work) and re.search(r"\bby\b|\bsong\b", work):
-            unsupported.append("specific commercial songs (I use royalty-free background music)")
-
-        # Voice
-        if re.search(r"\b(no|without)\s+(voice|voiceover|voice-over|narration|narrator)\b|\bmusic only\b", work):
-            fields["voice"] = "none"
-        elif re.search(r"\b(male|man'?s?|guy|deep)\s+voice\b|\bmale narrator\b", work):
-            fields["voice"] = "male"
-        elif re.search(r"\b(female|woman'?s?|lady|girl'?s?)\s+voice\b|\bfemale narrator\b", work):
-            fields["voice"] = "female"
-
-        # Captions
-        if re.search(r"\b(no|without|turn off|remove|disable)\s+(the\s+)?(captions?|subtitles?|subs)\b", work):
-            fields["captions_enabled"] = False
-        elif re.search(r"\b(captions?|subtitles?|subs)\b", work):
-            fields["captions_enabled"] = True
-            m = re.search(r"\b(?:captions?|subtitles?|subs)\s+in\s+(\w+)", work)
-            if m and (lang := _first_match(m.group(1), LANG_WORDS)):
-                fields["caption_language"] = lang
-                work = work.replace(m.group(0), " ")
-
-        # Language
-        lang = _first_match(work, LANG_WORDS)
-        if lang:
-            fields["language"] = lang
-        else:
-            for ul in UNSUPPORTED_LANGS:
-                if _has(work, [ul]):
-                    unsupported.append(
-                        f"{ul.capitalize()} narration (available: English, Hindi, Malayalam, Tamil, Spanish, French)"
-                    )
-                    break
-
-        # Duration
-        duration = None
-        m = re.search(r"\b(\d{1,3})\s*-?\s*(s|sec|secs|second|seconds)\b", work)
+            n = int(m.group(1))
+            nearest = min((15, 30, 60), key=lambda d: abs(d - n))
+            f["duration"] = str(nearest)
+            if n not in (15, 30, 60):
+                unsupported.append(f"{n}-second length (I can do 15, 30 or 60 s, or the original length) — using {nearest} s")
+        elif re.search(r"\b(1|one|a)\s*-?\s*min(ute)?\b", t):
+            f["duration"] = "60"
+        elif "half a minute" in t:
+            f["duration"] = "30"
+        elif re.search(r"\b(original|full|whole)\s+(length|duration)\b|\bkeep (it|the) (length|duration)\b", t):
+            f["duration"] = "original"
+        elif re.search(r"\bshorter\b", t) and ctx.prefs.get("duration") in ("60", "30"):
+            f["duration"] = {"60": "30", "30": "15"}[ctx.prefs["duration"]]
+        elif re.search(r"\blonger\b", t) and ctx.prefs.get("duration") in ("15", "30"):
+            f["duration"] = {"15": "30", "30": "60"}[ctx.prefs["duration"]]
+        # format
+        if re.search(r"\b(youtube|yt)\b|\bshorts\b", t):
+            f["format"] = "youtube_short"
+        elif re.search(r"\b(instagram|insta|ig)\b|\breels?\b", t):
+            f["format"] = "instagram_reel"
+        elif re.search(r"\b(tiktok|vertical)\b", t):
+            f["format"] = "vertical"
+        if re.search(r"\b(16:9|landscape|horizontal|widescreen|square|1:1)\b", t):
+            unsupported.append("non-vertical formats (reels are 9:16)")
+        # quality
+        if re.search(r"\b4k\b", t):
+            unsupported.append("4K (best is high quality 1080×1920)")
+            f["quality"] = "high"
+        elif re.search(r"\b(high|best|hd|1080p?)\s*-?\s*(quality|res|resolution)\b|\bfull hd\b|\bhd\b", t):
+            f["quality"] = "high"
+        elif re.search(r"\b(standard|normal)\s+quality\b", t):
+            f["quality"] = "standard"
+        # vibe & style ("cinematic" sets both)
+        if v := _first(re.sub(r"\b\w+\s+(music|song|track|beat|voice ?over|voice)\b", " ", t), VIBE_WORDS):
+            f["vibe"] = v
+        if s := _first(t, STYLE_WORDS):
+            f["style"] = s
+        # language
+        for lang in OTHER_LANGS:
+            if re.search(rf"\b{lang}\b", t):
+                unsupported.append(f"{lang.capitalize()} narration (English only for now)")
+                break
+        # title
+        m = re.search(r"\btitle\s*(?:is|:|-)?\s*[\"“'](.+?)[\"”']", raw, re.I)
         if m:
-            duration = int(m.group(1))
-        elif re.search(r"\b(1|one|a)\s*-?\s*(min|minute)\b", work):
-            duration = 60
-        elif re.search(r"\b(2|two|3|three|5|five)\s*-?\s*(min|minutes|mins)\b", work):
-            duration = 120
-        elif "half a minute" in work:
-            duration = 30
-        else:
-            for word, n in NUMBER_WORDS.items():
-                if re.search(rf"\b{word}\s*(s|sec|secs|seconds?)\b", work):
-                    duration = n
-        if duration is not None:
-            if duration in req.DURATIONS:
-                fields["duration_seconds"] = duration
-            else:
-                nearest = req.nearest_duration(duration)
-                unsupported.append(f"{duration}-second length (I can do 15, 30, 45 or 60 s) — using {nearest} s")
-                fields["duration_seconds"] = nearest
-        elif re.search(r"\b(longer|make it longer)\b", work) and ctx.prefs.get("duration_seconds"):
-            cur = ctx.prefs["duration_seconds"]
-            bigger = [d for d in req.DURATIONS if d > cur]
-            if bigger:
-                fields["duration_seconds"] = bigger[0]
-        elif re.search(r"\b(shorter|make it shorter)\b", work) and ctx.prefs.get("duration_seconds"):
-            cur = ctx.prefs["duration_seconds"]
-            smaller = [d for d in req.DURATIONS if d < cur]
-            if smaller:
-                fields["duration_seconds"] = smaller[-1]
+            f["title_text"] = m.group(1)
+        # free-form edit instructions (passed to selection/sequencing)
+        if INSTRUCTION_RE.search(t):
+            f["instructions"] = raw.strip()[:500]
+        return f, unsupported
 
-        # Format & aspect ratio
-        if re.search(r"\b(youtube|yt)\b|\bshorts\b", work):
-            fields["format"] = "youtube_short"
-        elif re.search(r"\b(instagram|insta|ig)\b|\breels?\b", work):
-            fields["format"] = "instagram_reel"
-        elif re.search(r"\b(tiktok|vertical|generic)\b", work):
-            fields["format"] = "vertical"
-        if re.search(r"\b(16:9|landscape|horizontal|widescreen|1:1|square|4:5)\b", work):
-            unsupported.append("non-vertical formats (videos are 9:16 vertical)")
-
-        # Quality
-        if re.search(r"\b(4k|8k|2160p)\b", work):
-            unsupported.append("4K (best available is high quality 1080×1920)")
-            fields["quality"] = "high"
-        elif re.search(r"\b(high|best|hd|full hd|1080p?|premium|top)\s*-?\s*(quality|res|resolution)?\b", work) and \
-                re.search(r"quality|hd|1080|res", work):
-            fields["quality"] = "high"
-        elif re.search(r"\b(standard|normal|basic|regular)\s+quality\b|\bsd\b", work):
-            fields["quality"] = "standard"
-
-        # Pace
-        if re.search(r"\b(faster|fast|quick|quicker|snappy|speed it up)\b(\s+pace)?", work) and \
-                not re.search(r"\bfast food\b", work):
-            fields["pace"] = "fast"
-        elif re.search(r"\b(slower|slow|relaxed pace)\b", work):
-            fields["pace"] = "slow"
-
-        # Vibe & style
-        vibe = _first_match(work, VIBE_WORDS)
-        if vibe:
-            fields["vibe"] = vibe
-        style = _first_match(work, STYLE_WORDS)
-        if style:
-            fields["visual_style"] = style
-
-        # Branding / CTA / script
-        m = re.search(r"\b(?:call to action|cta)\s*(?:is|:|-|=)?\s*[\"“']?(.+?)[\"”']?$", raw.strip(), re.I)
-        if m:
-            fields["call_to_action"] = m.group(1)
-        m = re.search(r"\bend with\s+[\"“'](.+?)[\"”']", raw, re.I)
-        if m:
-            fields["call_to_action"] = m.group(1)
-        m = re.search(r"\bbrand colou?rs?\s*(?:are|is|:|-)?\s*(.+)$", raw.strip(), re.I)
-        if m:
-            fields["brand_colors"] = m.group(1)
-        if re.search(r"\blogo\b", work):
-            unsupported.append("logo overlays (coming soon — brand colours and a call to action work today)")
-        m = re.search(r"\b(?:my script|use this script|script)\s*[:\-]\s*(.+)$", raw.strip(), re.I | re.S)
-        if m and len(m.group(1)) > 20:
-            fields["user_script"] = m.group(1)
-
-        # Topic
-        topic = self._topic(raw, t, ctx)
-        if topic:
-            fields["topic"] = topic
-        return fields, unsupported
-
-    def _topic(self, raw: str, t: str, ctx: AgentContext) -> str | None:
-        m = re.search(r"\b(?:change|switch|set)\s+the\s+topic\s+(?:to|:)\s*(.+)$", t)
-        if m:
-            return self._clean_topic(m.group(1))
-        m = re.search(r"\b(?:about|on the topic of|regarding|featuring|showing|explaining)\s+(.+)$", t)
-        if m:
-            return self._clean_topic(m.group(1))
-        m = re.search(
-            r"\b(?:create|make|generate|produce|want|need)\s+(?:me\s+)?(?:a|an|some)?\s*(.+?)\s+(?:video|reel|short|clip)s?\b",
-            t,
-        )
-        if m:
-            cand = self._clean_topic(m.group(1))
-            if cand:
-                return cand
-        if ctx.pending_group == "topic" or (ctx.state in ("none", "draft") and not ctx.prefs.get("topic")):
-            if ctx.pending_group == "topic":
-                cand = self._clean_topic(t)
-                if cand and len(cand) >= 2:
-                    return cand
-        return None
-
-    @staticmethod
-    def _clean_topic(text: str) -> str | None:
-        text = re.sub(r"\b\d{1,3}\s*-?\s*(?:s|sec|secs|seconds?)\b", " ", text)
-        text = re.split(
-            r"[,.;!?]|\s+(?:in|with|using|and make|make it|for (?:instagram|insta|youtube|tiktok|reels?|shorts))\b",
-            text,
-        )[0]
-        words = re.findall(r"[\w'&+-]+", text)
-        drop = set(FILLER)
-        for table in (VIBE_WORDS, STYLE_WORDS, LANG_WORDS):
-            for ws in table.values():
-                drop.update(ws)
-        # Trim filler only at the edges: "a funny cat video" → "cat"; "tips for runners" stays.
-        while words and words[0].lower() in drop:
-            words.pop(0)
-        while words and (words[-1].lower() in drop or words[-1].lower() in {"about", "on"}):
-            words.pop()
-        topic = " ".join(words).strip()
-        return topic[:300] or None
-
-    # ------------------------------------------------------------------ intent
     def analyze_message(self, text: str, ctx: AgentContext) -> MessageAnalysis:
         t = normalize(text)
         fields, unsupported = self._extract(text, ctx)
-        intent = "other"
-        conf = 0.6
+        intent, conf = "other", 0.6
         if not t:
-            intent = "other"
+            pass
         elif is_explicit_confirmation(t):
             intent, conf = "confirm", 0.95
         elif re.fullmatch(r"(help|menu|\?|what can you do|how does (this|it) work)", t):
             intent, conf = "help", 0.95
         elif re.match(r"^(cancel|stop|abort|never ?mind|forget it)\b", t):
             intent, conf = "cancel", 0.9
-        elif re.match(r"^(retry|try again|regenerate)\b", t):
+        elif re.match(r"^(retry|try again)\b", t):
             intent, conf = "retry", 0.9
-        elif re.search(r"\b(status|progress|is it (ready|done)|where is my video|how long)\b", t):
+        elif re.search(r"\b(status|progress|is it (ready|done)|where is my (reel|video))\b", t):
             intent, conf = "status", 0.85
-        elif re.search(r"\b(link|resend|send (it|the video) again|download)\b", t) and len(t) < 60:
+        elif re.search(r"\b(link|resend|download)\b", t) and len(t) < 50 and not fields:
             intent, conf = "resend_link", 0.8
-        elif re.search(r"\b(new (video|project|one|reel)|another (video|one|reel)|start over|start again)\b", t) \
-                and not fields.get("topic"):
+        elif re.search(r"\b(register|sign ?up|create (an )?account|website|dashboard)\b", t) and not fields:
+            intent, conf = "register", 0.8
+        elif re.search(r"\b(new (reel|video|project|one)|another (reel|video|one)|start over|start again)\b", t):
             intent, conf = "new_project", 0.85
-        elif re.search(r"\b(create|make|generate|produce|want|need)\b.*\b(video|reel|short|clip)s?\b", t):
-            intent, conf = "create_video", 0.85
+        elif is_done_phrase(t):
+            intent, conf = "done_uploading", 0.9
+        elif re.search(r"\b(love it|looks? (great|good|perfect|amazing)|perfect|awesome|thanks?|thank you|great job)\b", t) \
+                and ctx.state == "completed" and not fields:
+            intent, conf = "approve", 0.85
+        elif OFF_TOPIC_RE.search(t) and not fields:
+            intent, conf = "off_topic", 0.8
         elif GREETING_RE.match(t) and len(t) < 30 and not fields:
             intent, conf = "greeting", 0.9
-        elif fields and (
-            ctx.state in ("completed", "failed", "awaiting_confirmation")
-            or re.search(r"\b(make it|change|switch|instead|rather|more|less|use)\b", t)
-        ):
-            intent, conf = "modify", 0.75
-        elif fields or (ctx.pending_group and len(t) > 1):
+        elif fields and ctx.state in ("completed", "failed", "awaiting_confirmation"):
+            intent, conf = "modify", 0.8
+        elif re.search(r"\b(make|create|edit|turn|build)\b.*\b(reel|video|short|clip|montage)\b", t) or (
+                fields.get("genre") and ctx.state in ("none", "collecting_media")):
+            intent, conf = "create_reel", 0.85
+        elif fields or (ctx.pending and len(t) > 1):
             intent, conf = "provide_info", 0.7
-        elif re.fullmatch(r"(you (choose|decide|pick)|anything|whatever|surprise me|default|defaults|any)", t):
+        elif re.fullmatch(r"(you (choose|decide|pick)|anything|whatever|surprise me|default|any)", t):
             intent, conf = "provide_info", 0.8
-        is_revision = intent == "modify"
-        return MessageAnalysis(
-            intent=intent, confidence=conf, fields=fields, unsupported=unsupported, is_revision=is_revision
-        )
+        return MessageAnalysis(intent=intent, confidence=conf, fields=fields, unsupported=unsupported,
+                               done=is_done_phrase(t))  # "that's all, make it cinematic"
 
-    # ------------------------------------------------------------------ script
-    def write_script(self, prefs: dict[str, Any], scene_count: int, words_per_scene: int) -> Script:
-        topic = prefs.get("topic") or "your idea"
-        vibe = prefs.get("vibe") or "inspirational"
-        cta = prefs.get("call_to_action") or "Follow for more."
-        hooks = {
-            "motivational": f"Ready to level up your {topic}?",
-            "funny": f"Nobody talks about the funny side of {topic}.",
-            "emotional": f"Some moments in {topic} stay with you forever.",
-            "inspirational": f"Every journey in {topic} starts with one step.",
-            "educational": f"Three things to know about {topic}.",
-            "calm": f"Take a breath. Let's talk about {topic}.",
-            "energetic": f"Let's go — {topic}, full power!",
-        }
-        body = [
-            f"Start small with {topic} — consistency beats intensity.",
-            "Show up every day, even when it's hard.",
-            "Track your progress and celebrate small wins.",
-            "Learn from the best and make it your own.",
-            "Remember why you started.",
-            "Your future self will thank you.",
-            "Keep it simple and keep going.",
-            "Share it with someone who needs this.",
-        ]
-        lines = [hooks.get(vibe, hooks["inspirational"])]
-        lines += body[: max(0, scene_count - 2)]
-        lines.append(cta)
-        scenes = [
-            Scene(
-                narration=line,
-                on_screen_text=line if len(line) <= 60 else line[:57] + "…",
-                visual_query=f"{topic} {vibe}",
-            )
-            for line in lines[:scene_count]
-        ]
-        tag = re.sub(r"[^a-z0-9]", "", topic.lower())[:30] or "video"
-        return Script(title=topic.capitalize()[:80], scenes=scenes, hashtags=[f"#{tag}", f"#{vibe}"])
+    def write_script(self, items: list[PlanItem], total_seconds: float, context: EditContext) -> ScriptOutput:
+        travel = context.genre == "travel"
+        hook = "Some places stay with you forever." if travel else "Here's a little piece of my day."
+        payoff = "Until the next adventure." if travel else "Small moments, big smiles."
+        build = (["Every turn brought something new.", "The light here is unreal.", "Slow mornings, endless views.",
+                  "Moments like these.", "Taking it all in."] if travel else
+                 ["Starting slow.", "A little bit of everything.", "The best part of the day.", "Keeping it simple.",
+                  "Just living it."])
+        lines = []
+        bi = 0
+        for i, it in enumerate(items):
+            if it.role == "hook":
+                text = hook
+            elif it.role == "payoff":
+                text = payoff
+            else:
+                if bi % 2:  # don't narrate every cut
+                    bi += 1
+                    continue
+                text = build[(bi // 2) % len(build)]
+                bi += 1
+            lines.append(ScriptLine(item_index=i, text=text))
+        title = context.title_text or ("Travel diaries" if travel else "A day in my life")
+        return ScriptOutput(title=title, lines=lines)
