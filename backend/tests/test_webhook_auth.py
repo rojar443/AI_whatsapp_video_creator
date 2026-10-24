@@ -124,3 +124,13 @@ def test_account_deletion(client, db, fake_pipeline):
     db.expire_all()
     assert db.query(User).filter_by(is_anonymous=False).count() == 0
     assert db.query(VideoProject).count() == 0
+
+
+def test_registration_can_be_disabled(client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "registration_enabled", False)
+    r = client.post("/api/auth/register", json={"name": "A", "email": "a@example.com", "password": "longenough1",
+                                                "accept_terms": True})
+    assert r.status_code == 403 and "disabled" in r.json()["detail"]
+    assert client.get("/api/config").json()["registration_enabled"] is False

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import RegisterLink from "@/components/RegisterLink";
 import StartButton from "@/components/StartButton";
 
 const demo: [string, "in" | "out"][] = [
@@ -25,10 +26,10 @@ export default function Home() {
           </p>
           <div className="row">
             <StartButton />
-            <Link className="btn secondary" href="/register">Create account</Link>
+            <RegisterLink />
           </div>
           <p className="small muted" style={{ marginTop: 12 }}>
-            Your first draft doesn't need an account — just message the bot.
+            No account needed — just message the bot.
           </p>
         </div>
         <div className="phone" aria-label="Example Telegram conversation">
@@ -49,7 +50,6 @@ export default function Home() {
               <li><strong>Say what you want</strong> — "cinematic travel reel, calm voiceover" — by text or voice note.</li>
               <li><strong>Check the plan.</strong> See which moments were picked and why. Nothing is made until you say yes.</li>
               <li><strong>Get your reel</strong> in the chat, then ask for changes like "shorter" or "start with the beach".</li>
-              <li><strong>Register later</strong> to keep your history and get more credits.</li>
             </ol>
           </div>
           <div className="grid grid-2">

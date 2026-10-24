@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, Me } from "@/lib/api";
+import { useConfig } from "@/lib/useConfig";
 
 export default function Nav() {
   const path = usePathname();
   const [me, setMe] = useState<Me | null>(null);
   const [dev, setDev] = useState(false);
+  const cfg = useConfig();
 
   useEffect(() => {
     api<Me>("/api/me").then(setMe).catch(() => setMe(null));
@@ -46,10 +48,17 @@ export default function Nav() {
             <>
               {link("/#how", "How it works")}
               {dev && link("/dev/whatsapp", "Try the simulator")}
-              {link("/login", "Log in")}
-              <Link href="/register" className="btn small">
-                Get started
-              </Link>
+              {cfg?.registration_enabled && link("/login", "Log in")}
+              {cfg?.registration_enabled && (
+                <Link href="/register" className="btn small">
+                  Get started
+                </Link>
+              )}
+              {cfg?.telegram_bot && (
+                <a href={`https://t.me/${cfg.telegram_bot}`} className="btn small" target="_blank" rel="noreferrer">
+                  Open in Telegram
+                </a>
+              )}
             </>
           )}
         </div>

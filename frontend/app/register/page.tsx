@@ -41,6 +41,16 @@ export default function Register() {
     }
   }
 
+  if (cfg && !cfg.registration_enabled) {
+    return (
+      <div className="container narrow card">
+        <h1>Registration is closed</h1>
+        <p className="muted">No account is needed. Just message the bot on Telegram.</p>
+        {cfg.telegram_bot && <a className="btn" href={`https://t.me/${cfg.telegram_bot}`}>Open in Telegram</a>}
+      </div>
+    );
+  }
+
   if (devUrl) {
     return (
       <div className="container narrow card">

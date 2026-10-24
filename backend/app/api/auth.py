@@ -84,6 +84,8 @@ def _start_session(db: Session, user: User, request: Request, response: Response
 @router.post("/register", status_code=201, dependencies=[Depends(rate_limit("register", 5, 3600))])
 def register(body: RegisterIn, request: Request, response: Response, db: Session = Depends(get_db)):
     s = get_settings()
+    if not s.registration_enabled:
+        raise HTTPException(403, "Registration is disabled")
     if not body.accept_terms:
         raise HTTPException(422, "You must accept the terms and privacy policy")
     phone = normalize_phone(body.phone) if (body.phone or "").strip() else None

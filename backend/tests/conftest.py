@@ -21,6 +21,7 @@ os.environ.update({
     "MUSIC_LIBRARY_DIR": str(_TMP / "music"),
     "MESSAGING_PROVIDER": "dev",
     "WHATSAPP_ENABLED": "true",
+    "REGISTRATION_ENABLED": "true",
     "AI_PROVIDER": "rules",
     "TTS_PROVIDER": "mock",
     "TRANSCRIPTION_PROVIDER": "mock",
