@@ -1,13 +1,12 @@
 import Link from "next/link";
 
 const demo: [string, "in" | "out"][] = [
-  ["Create a motivational Reel about fitness", "out"],
-  ["Nice — fitness. Where will you post it, and how long should it be?", "in"],
-  ["Instagram, 30 seconds", "out"],
-  ["Here's your video plan 🎬\n• Vibe: Motivational\n• Style: Cinematic (suggested)\n• Length: 30 s\nCost: 2 credits. Reply yes to generate.", "in"],
-  ["yes", "out"],
-  ["✅ Your video is ready!", "in"],
-  ["Make it more cinematic, faster pace", "out"],
+  ["🎞 🎞 🎞 🎞 🎞 🎞  (6 clips from a trip)", "out"],
+  ["I received 6 clips. Send more, or tell me what you want.", "in"],
+  ["That's all. Make it a cinematic travel reel with a calm voiceover and soft music.", "out"],
+  ["Plan: ~30 s 9:16 reel · opening on the best landscape shot · 5 strongest moments · cinematic grade · calm AI narration · captions from the script · soft music. Proceed?", "in"],
+  ["Yes", "out"],
+  ["Your reel is ready! 🎬 Want any changes?", "in"],
 ];
 
 export default function Home() {
@@ -15,16 +14,18 @@ export default function Home() {
     <>
       <section className="hero">
         <div>
-          <h1>Make Reels and Shorts by chatting on WhatsApp</h1>
+          <h1>Your raw clips, turned into a reel — on WhatsApp</h1>
           <p className="lead">
-            Describe your idea in a text or a voice note. ReelChat asks a couple of quick questions, shows you a plan,
-            and sends the finished vertical video back to the same chat.
+            Send the photos and videos sitting on your phone, say the vibe you want, approve the plan, and get a
+            finished vertical reel for Instagram or YouTube Shorts in the same chat. No app, no editing skills.
           </p>
           <div className="row">
-            <Link className="btn" href="/register">Create free account</Link>
-            <Link className="btn secondary" href="#how">How it works</Link>
+            <Link className="btn" href="#how">How it works</Link>
+            <Link className="btn secondary" href="/register">Create account</Link>
           </div>
-          <p className="small muted" style={{ marginTop: 12 }}>10 free credits · no editing skills needed</p>
+          <p className="small muted" style={{ marginTop: 12 }}>
+            Your first draft doesn't need an account — just message us on WhatsApp.
+          </p>
         </div>
         <div className="phone" aria-label="Example WhatsApp conversation">
           <div className="chat">
@@ -40,21 +41,21 @@ export default function Home() {
         <div className="grid grid-2" style={{ marginTop: 16 }}>
           <div className="card">
             <ol className="steps">
-              <li><strong>Sign up</strong> with your email and WhatsApp number.</li>
-              <li><strong>Link WhatsApp</strong> by sending the 6-digit code we show you.</li>
-              <li><strong>Chat your idea</strong> — topic, vibe, length — by text or voice note.</li>
-              <li><strong>Approve the plan.</strong> Nothing is generated (or charged) until you say yes.</li>
-              <li><strong>Get your video</strong> in the chat, and ask for changes any time.</li>
+              <li><strong>Send your clips and photos</strong> to the ReelChat WhatsApp number.</li>
+              <li><strong>Say what you want</strong> — "cinematic travel reel, calm voiceover" — by text or voice note.</li>
+              <li><strong>Check the plan.</strong> See which moments were picked and why. Nothing is made until you say yes.</li>
+              <li><strong>Get your reel</strong> in the chat, then ask for changes like "shorter" or "start with the beach".</li>
+              <li><strong>Register later</strong> to keep your history and get more credits.</li>
             </ol>
           </div>
           <div className="grid grid-2">
             {[
-              ["Conversational", "No long forms. Sensible defaults, and only the questions that matter."],
-              ["Voice notes", "Speak in English, Hindi, Malayalam and more."],
-              ["Made for vertical", "9:16 MP4 for Instagram Reels, YouTube Shorts and more."],
-              ["Revisions", "\"Make it more cinematic\", \"use a faster pace\" — just ask."],
-              ["Your history", "Every project, revision and download on your dashboard."],
-              ["Fair credits", "Failed videos are refunded automatically. No double charges."],
+              ["Best moments, picked for you", "Dark, shaky and duplicate shots are dropped; the strongest moments are arranged hook → highlights → payoff."],
+              ["Genre playbooks", "Travel and daily-life reels follow curated editing rules for pacing, structure and look."],
+              ["Narration & captions", "A short AI-written script, read by a natural voice. Captions come from the script, so silent clips work."],
+              ["Photos come alive", "Photos get a slow zoom or pan so they sit naturally between your clips."],
+              ["Made for sharing", "9:16 MP4 sized to send in WhatsApp, or a secure download link."],
+              ["Fair credits", "Failed edits are refunded automatically. No double charges."],
             ].map(([t, d]) => (
               <div className="card" key={t}>
                 <h3>{t}</h3>

@@ -52,7 +52,7 @@ Meta must reach `https://<public-host>/api/webhooks/whatsapp`.
 
 **Quick tunnel (no account, URL changes on every restart)** — already in `docker-compose.yml`:
 ```bash
-docker compose up -d tunnel
+docker compose --profile tunnel up -d tunnel
 docker compose logs tunnel | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com'
 ```
 Put that URL in `PUBLIC_BASE_URL`, restart `api` and `worker`, and update the webhook in Meta (step 7) whenever it changes.

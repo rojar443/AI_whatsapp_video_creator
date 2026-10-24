@@ -1,0 +1,13 @@
+# Point PIPELINE_CONFIG_FILE at a copy of this file to plug in your own processing agents.
+# Each step: builtin | python:package.module:ClassName | http(s)://your-service/endpoint
+# Contracts (input/output JSON) are defined in app/pipeline/contracts.py — see docs/PIPELINE_AGENTS.md.
+steps:
+  quality_filter: builtin
+  scene_split: builtin
+  moment_scoring: builtin        # e.g. https://agents.internal/score
+  sequencing: builtin
+  script: builtin                # e.g. python:my_agents.script:ScriptAgent
+  narration: builtin
+  captions: builtin
+  music: builtin
+  render: builtin

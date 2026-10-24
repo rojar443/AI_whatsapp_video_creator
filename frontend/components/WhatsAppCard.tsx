@@ -55,12 +55,7 @@ export default function WhatsAppCard({ me, onChange }: { me: Me; onChange: () =>
       </div>
       {error && <div className="alert error" style={{ marginTop: 10 }}>{error}</div>}
       {note && <div className="alert ok" style={{ marginTop: 10, wordBreak: "break-all" }}>{note}</div>}
-      {!me.email_verified ? (
-        <>
-          <p className="muted small" style={{ margin: "8px 0 12px" }}>Verify your email first, then link your number.</p>
-          <button className="btn secondary" onClick={resend}>Resend verification email</button>
-        </>
-      ) : info ? (
+      {info ? (
         <div className="stack" style={{ marginTop: 10 }}>
           <p style={{ margin: 0 }}>
             From <strong>{info.send_from}</strong>, send this message to ReelChat on WhatsApp:
@@ -75,7 +70,8 @@ export default function WhatsAppCard({ me, onChange }: { me: Me; onChange: () =>
       ) : (
         <>
           <p className="muted small" style={{ margin: "8px 0 12px" }}>
-            We'll give you a one-time code to send from {me.phone}. This proves the number is yours and lets us reply.
+            Get a one-time code and send it from {me.phone}. This proves the number is yours, and any reels you
+            already made on WhatsApp move into your history.
           </p>
           <button className="btn" onClick={start}>Get link code</button>
         </>

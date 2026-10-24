@@ -119,7 +119,8 @@ class Conversation(Base):
     whatsapp_account_id: Mapped[str] = mapped_column(ForeignKey("whatsapp_accounts.id", ondelete="CASCADE"), unique=True)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
     active_project_id: Mapped[str | None] = mapped_column(
-        ForeignKey("video_projects.id", ondelete="SET NULL", use_alter=True), nullable=True)
+        ForeignKey("video_projects.id", ondelete="SET NULL", use_alter=True, name="fk_conversations_active_project"),
+        nullable=True)
     last_message_at: Mapped[datetime | None] = mapped_column(TZ)
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
 

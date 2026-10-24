@@ -44,7 +44,6 @@ export type Me = {
   name: string;
   email: string;
   phone: string;
-  role: "user" | "admin";
   email_verified: boolean;
   credits: number;
   whatsapp: { status: "linked" | "pending" | "not_linked"; number: string | null; linked_at: string | null; business_number: string };
@@ -52,35 +51,49 @@ export type Me = {
 
 export type Asset = {
   id: string; kind: string; url: string | null; width: number | null; height: number | null;
-  duration_seconds: number | null; is_mock: boolean; title: string | null; created_at: string;
-  expires_at: string | null; size_bytes: number; job_id: string | null; deleted: boolean;
+  duration_seconds: number | null; is_demo: boolean; demo: string[] | null; title: string | null;
+  created_at: string; expires_at: string | null; size_bytes: number; job_id: string | null; deleted: boolean;
 };
 
 export type Job = {
   id: string; revision: number; status: string; stage: string | null; attempts: number; run_number: number;
-  credits_charged: number; provider: string | null; is_mock: boolean; error_code: string | null;
+  credits_charged: number; pipeline: Record<string, string> | null; error_code: string | null;
   error_message: string | null; created_at: string; finished_at: string | null;
 };
 
 export type ProjectSummary = {
-  id: string; title: string; status: string; revision: number; last_error: string | null;
-  created_at: string; updated_at: string; video: Asset | null;
+  id: string; title: string; status: string; stage: string | null; revision: number; last_error: string | null;
+  sources: number; created_at: string; updated_at: string; video: Asset | null;
+};
+
+export type PlanItem = {
+  segment_id: string; asset_id: string; kind: string; source_start: number; source_end: number;
+  role: "hook" | "build" | "payoff"; reason: string; description: string;
+};
+
+export type Plan = {
+  items: PlanItem[]; total_seconds: number; dropped: { asset_id: string; label: string; reason: string }[];
+  notes: string[]; script: { title: string; lines: { item_index: number; text: string }[] } | null;
+  music_title: string | null; scorer: string; pipeline: Record<string, string>; labels: Record<string, string>;
 };
 
 export type ProjectDetail = ProjectSummary & {
-  preferences: { revision: number; values: Record<string, any>; sources: Record<string, string>; credits_cost: number }[];
+  preferences: { revision: number; values: Record<string, any>; sources: Record<string, string>;
+                 playbook: string | null; plan: Plan | null }[];
   jobs: Job[];
   assets: Asset[];
+  source_files: { id: string; label: string; kind: string; status: string; reject_reason: string | null;
+                  duration_seconds: number | null }[];
   can_retry: boolean;
 };
 
 export const STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  awaiting_input: "Collecting details",
+  collecting_media: "Receiving clips",
+  awaiting_preferences: "Planning",
   awaiting_confirmation: "Waiting for your OK",
   queued: "Queued",
-  processing: "Generating",
-  completed: "Completed",
+  processing: "Editing",
+  completed: "Ready",
   failed: "Failed",
   cancelled: "Cancelled",
 };
@@ -88,4 +101,8 @@ export const STATUS_LABEL: Record<string, string> = {
 export function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
   return new Date(s).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+export function mmss(t: number): string {
+  return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 }

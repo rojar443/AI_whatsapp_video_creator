@@ -38,7 +38,6 @@ export default function Nav() {
               {link("/dashboard", "Videos")}
               {link("/account", "Account")}
               {dev && link("/dev/whatsapp", "WhatsApp simulator")}
-              {me.role === "admin" && link("/admin", "Admin")}
               <button className="btn secondary small" onClick={logout}>
                 Log out
               </button>
@@ -46,6 +45,7 @@ export default function Nav() {
           ) : (
             <>
               {link("/#how", "How it works")}
+              {dev && link("/dev/whatsapp", "Try the simulator")}
               {link("/login", "Log in")}
               <Link href="/register" className="btn small">
                 Get started

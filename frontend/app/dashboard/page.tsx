@@ -31,19 +31,19 @@ export default function Dashboard() {
         <div className="card">
           <h3>Quick tips</h3>
           <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
-            <li>Try: <em>"A funny 15 second YouTube Short about cats"</em></li>
-            <li>Send a voice note in English, Hindi or Malayalam</li>
-            <li>After delivery: <em>"make it more cinematic"</em></li>
+            <li>Send 3–15 clips or photos, then say <em>"that's all"</em></li>
+            <li>Describe the vibe: <em>"cinematic travel reel, calm voiceover"</em> (text or voice note)</li>
+            <li>After delivery: <em>"shorter"</em>, <em>"start with the beach"</em>, <em>"no music"</em></li>
             <li>Reply <em>status</em>, <em>link</em>, <em>new</em> or <em>help</em> any time</li>
           </ul>
         </div>
       </div>
 
-      <h2 style={{ marginTop: 28 }}>Your videos</h2>
+      <h2 style={{ marginTop: 28 }}>Your reels</h2>
       {projects === null ? (
         <p className="muted">Loading…</p>
       ) : projects.length === 0 ? (
-        <div className="card muted">No videos yet. Send your first idea on WhatsApp!</div>
+        <div className="card muted">No reels yet. Send clips and photos to ReelChat on WhatsApp!</div>
       ) : (
         <div className="grid grid-2">
           {projects.map((p) => (
@@ -59,10 +59,10 @@ export default function Dashboard() {
                   <span className={`badge ${p.status}`}>{STATUS_LABEL[p.status] ?? p.status}</span>
                 </div>
                 <p className="small muted" style={{ margin: "6px 0" }}>
-                  Revision {p.revision} · {fmtDate(p.updated_at)}
+                  {p.sources} uploads · revision {p.revision} · {fmtDate(p.updated_at)}
                 </p>
                 {p.last_error && <p className="small" style={{ color: "var(--danger)", margin: 0 }}>{p.last_error}</p>}
-                {p.video?.is_mock && <span className="badge pending">Mock preview</span>}
+                {p.video?.is_demo && <span className="badge pending">Demo output</span>}
               </div>
             </Link>
           ))}

@@ -30,11 +30,16 @@ def format_plan(plan: dict, prefs: Prefs, credits_cost: int, balance: int) -> st
         f"• {narr[:1].upper() + narr[1:]} · {caps} · {music}",
         f"Moments ({len(items)} picked from {plan.get('candidates', len(items))} usable shots):",
     ]
-    for i, it in enumerate(items[:12], 1):
+    shown = list(enumerate(items, 1))
+    if len(shown) > 6:  # keep WhatsApp messages short: first moments + the ending
+        shown = shown[:5] + [shown[-1]]
+    for i, it in shown:
         name = labels.get(it["asset_id"], "clip")
         span = "" if it["kind"] == "photo" else f" {mmss(it['source_start'])}–{mmss(it['source_end'])}"
         why = it.get("description") or it.get("reason") or ""
         role = ROLE.get(it["role"], "")
+        if i == len(items) and len(items) > 6:
+            lines.append(f"   …+{len(items) - 6} more moments")
         lines.append(f"{i}. {role + ' — ' if role else ''}{name}{span}{': ' + why if why else ''}")
     dropped = plan.get("dropped", [])
     if dropped:

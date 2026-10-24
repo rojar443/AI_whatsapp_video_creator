@@ -1,4 +1,4 @@
-# Local development stack. Production notes: docs/DEPLOYMENT.md
+# Local development / single-server stack. See docs/SETUP.md and docs/WHATSAPP_SETUP.md.
 name: reelchat
 
 x-backend: &backend
@@ -7,52 +7,71 @@ x-backend: &backend
   env_file: .env
   environment:
     DATABASE_URL: postgresql+psycopg://reelchat:reelchat@postgres:5432/reelchat
+    REDIS_URL: redis://redis:6379/0
+    TASK_BACKEND: celery
     STORAGE_LOCAL_DIR: /app/var/storage
     WORK_DIR: /app/var/work
+    PLAYBOOK_DIR: /app/playbooks
+    MUSIC_LIBRARY_DIR: /app/music
   volumes:
     - media:/app/var
+    - ./backend/music:/app/music:ro
+  security_opt: ["no-new-privileges:true"]
   depends_on:
-    postgres:
-      condition: service_healthy
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
 
 services:
   postgres:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: reelchat
-      POSTGRES_PASSWORD: reelchat
-      POSTGRES_DB: reelchat
+    environment: {POSTGRES_USER: reelchat, POSTGRES_PASSWORD: reelchat, POSTGRES_DB: reelchat}
     ports: ["127.0.0.1:55433:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reelchat"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U reelchat"], interval: 3s, timeout: 3s, retries: 20}
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 3s, timeout: 3s, retries: 20}
 
   api:
     <<: *backend
     ports: ["127.0.0.1:8100:8000"]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    healthcheck: {test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"], interval: 10s, timeout: 5s, retries: 10}
 
   worker:
     <<: *backend
-    command: ["python", "-m", "app.jobs.worker"]
+    # -B runs the beat scheduler (sweeper, retention purge) inside this single worker.
+    command: ["celery", "-A", "app.jobs.celery_app", "worker", "-B", "-Q", "default,media",
+              "--concurrency", "2", "--loglevel", "INFO", "-s", "/app/var/celerybeat-schedule"]
+    cap_drop: [ALL]
     depends_on:
-      api:
-        condition: service_healthy   # api runs the migrations first
+      api: {condition: service_healthy}  # api runs the migrations first
 
   web:
     build: ./frontend
-    environment:
-      BACKEND_URL: http://api:8000
+    environment: {BACKEND_URL: "http://api:8000"}
     ports: ["127.0.0.1:3100:3100"]
     depends_on: [api]
 
+  # Public HTTPS URL for the Meta webhook. Quick tunnel: no account, URL changes on restart.
+  #   docker compose logs tunnel | grep trycloudflare.com
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.3
+    command: ["tunnel", "--no-autoupdate", "--url", "http://api:8000"]
+    depends_on: [api]
+    profiles: ["tunnel"]
+
+  # Stable URL with your own domain: set CLOUDFLARE_TUNNEL_TOKEN in .env.
+  tunnel-named:
+    image: cloudflare/cloudflared:2026.10.3
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment: {TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:-}"}
+    depends_on: [api]
+    profiles: ["named-tunnel"]
+
 volumes:
   pgdata:
+  redisdata:
   media:
