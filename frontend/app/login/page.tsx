@@ -73,6 +73,26 @@ export default function Login() {
     }
   }
 
+  async function devLogin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const tgId = String(f.get("tg_id")).trim();
+    if (!/^\d{3,16}$/.test(tgId)) {
+      setError("Enter your numeric Telegram ID (digits only, like 123456789), not your @username. Message @userinfobot in Telegram to get it.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/dev/telegram/login", { method: "POST", json: { tg_id: tgId, name: f.get("name") || undefined } });
+      window.location.href = nextUrl();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function emailLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -140,6 +160,18 @@ export default function Login() {
               Try again
             </button>
           </>
+        )}
+
+        {cfg?.dev_mode && (
+          <form onSubmit={devLogin} className="alert warn" style={{ marginBottom: 0 }}>
+            <strong>Development only:</strong> sign in with your Telegram user ID (ask @userinfobot) without the bot.
+            <div className="row" style={{ marginTop: 8 }}>
+              <input name="tg_id" required inputMode="numeric" placeholder="Numeric ID, e.g. 123456789" aria-label="Telegram user ID"
+                     style={{ flex: "1 1 160px" }} />
+              <input name="name" placeholder="Name (optional)" aria-label="Name" style={{ flex: "1 1 120px" }} />
+              <button className="btn small" disabled={busy}>Sign in</button>
+            </div>
+          </form>
         )}
 
         <details>
