@@ -16,6 +16,7 @@ from app.agents.base import AgentContext, AgentError, MessageAnalysis
 from app.agents.rules import RulesAgentProvider
 
 log = logging.getLogger(__name__)
+DEFAULT_BASE_URL = "https://agenticorg.hackathon.pinelabs.com"
 
 
 class AgenticOrgAgentProvider(RulesAgentProvider):
@@ -37,7 +38,7 @@ class AgenticOrgAgentProvider(RulesAgentProvider):
         self.company_id = company_id
         self.action = action
         self.client = client
-        self._client_options = {"api_key": api_key, "base_url": base_url, "timeout": timeout}
+        self._client_options = {"api_key": api_key, "base_url": base_url or DEFAULT_BASE_URL, "timeout": timeout}
         self._client_factory = None
         if client is None:
             from agenticorg import AgenticOrg
@@ -53,18 +54,19 @@ class AgenticOrgAgentProvider(RulesAgentProvider):
             return super().analyze_message(text, ctx).sanitized()
 
     def _analyze_remote(self, text: str, ctx: AgentContext) -> MessageAnalysis:
-        inputs = {
-            "statement": text,
+        kwargs: dict[str, Any] = {
+            "action": self.action,
+            "inputs": {"task": text},
             "context": {
                 "state": ctx.state,
-                "pending_group": ctx.pending_group,
+                "pending": ctx.pending,
+                "media_summary": ctx.media_summary,
                 "preferences": ctx.prefs,
                 "recent_messages": [
                     {"role": role, "text": message} for role, message in ctx.recent[-6:]
                 ],
             },
         }
-        kwargs: dict[str, Any] = {"action": self.action, "inputs": inputs}
         if self.company_id:
             kwargs["company_id"] = self.company_id
         if self.client is not None:

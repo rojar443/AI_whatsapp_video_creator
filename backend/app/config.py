@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     agent_model_script: str | None = None  # script writing
     agenticorg_api_key: str | None = None
     agenticorg_agent_name: str | None = None  # existing agent UUID or type
-    agenticorg_base_url: str | None = None  # SDK default when unset
+    agenticorg_base_url: str | None = "https://agenticorg.hackathon.pinelabs.com"
     agenticorg_company_id: str | None = None  # required for agent-type runs
     agenticorg_action: str = "process"
     agent_timeout_seconds: float = 30.0

@@ -51,8 +51,8 @@ set these values in `.env`:
 ```dotenv
 AGENT_PROVIDER=agenticorg
 AGENTICORG_API_KEY=your-key
-AGENTICORG_AGENT_NAME=your-agent-uuid-or-type
-AGENTICORG_COMPANY_ID=your-company-uuid
+AGENTICORG_AGENT_NAME=your-agent-uuid
+AGENTICORG_BASE_URL=https://agenticorg.hackathon.pinelabs.com
 ```
 
 `AGENTICORG_COMPANY_ID` is required for agent types; it is optional for agent UUIDs.
@@ -62,7 +62,8 @@ The Docker build includes the SDK; rebuild with `docker compose up --build`.
 For a local backend, install with `pip install -e ".[agenticorg,dev]"` from `backend/`.
 If Admin has a saved agent override, select `agenticorg` there or reset it to environment config.
 
-The agent receives `inputs.statement` and `inputs.context` and must return a
+The agent receives the user's text as `inputs.task`, with conversation details in
+the SDK's separate `context` argument, and must return a
 `MessageAnalysis` JSON object in `result.output`. That interpretation passes directly
 to requirement collection and validation. Video generation still requires user confirmation.
 Script writing uses the existing rules implementation. Failed calls or invalid JSON use
