@@ -6,7 +6,7 @@ Works on any Linux VM that runs Docker (2 vCPU / 4 GB RAM is comfortable; FFmpeg
 ## 1. Get a VM
 Any provider with a free or cheap VM works. Free options change often, so check current terms: Oracle Cloud "Always
 Free" (full VM, needs a card for sign-up verification), or a small paid VPS (Hetzner and similar, a few euros a
-month). Pick Ubuntu 22.04/24.04. Open **ports 80 and 443** in the provider's firewall (and nothing else except SSH).
+month). Pick Ubuntu 22.04/24.04. Open **ports 443 and 80** (80 only fetches certificates and redirects to https) in the provider's firewall (and nothing else except SSH).
 On Oracle images the VM's own firewall also blocks them by default: `sudo iptables -I INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT`
 (save with `sudo netfilter-persistent save`).
 

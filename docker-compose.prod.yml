@@ -11,7 +11,6 @@ x-backend: &backend
     REDIS_URL: redis://redis:6379/0
     TASK_BACKEND: celery
     APP_ENV: production
-    COOKIE_SECURE: "true"
     STORAGE_LOCAL_DIR: /app/var/storage
     WORK_DIR: /app/var/work
     PLAYBOOK_DIR: /app/playbooks
@@ -74,8 +73,9 @@ services:
   caddy:                     # HTTPS (automatic certificates) in front of the website
     image: caddy:2-alpine
     environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
-    ports: ["80:80", "443:443"]
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      SITE_IP: ${SITE_IP:?set SITE_IP in .env}
+    ports: ["80:80", "443:443"]   # 80 = certificate checks and redirect to https
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
