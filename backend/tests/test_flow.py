@@ -275,3 +275,14 @@ def test_tenant_isolation(client, db, fake_pipeline):
     wa_button(other, btn, wa_id="15551230000")
     drain()
     assert "expired" in bodies(db, "15551230000")[-1]
+
+
+def test_no_signup_messages_when_registration_disabled(client, db, fake_pipeline, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "registration_enabled", False)
+    send_batch(client, 8, 0)
+    say(client, db, "That's all. Travel reel, 60 seconds")
+    r = say(client, db, "yes")
+    assert any("used all your free reels" in x for x in r)
+    assert not any("register" in b.lower() for b in bodies(db))

@@ -134,3 +134,42 @@ def test_registration_can_be_disabled(client, monkeypatch):
                                                 "accept_terms": True})
     assert r.status_code == 403 and "disabled" in r.json()["detail"]
     assert client.get("/api/config").json()["registration_enabled"] is False
+
+
+def test_me_returns_csrf_token_fallback(client):
+    data = register(client)
+    me = client.get("/api/me").json()
+    assert me["csrf_token"] == data["csrf_token"]
+    client.headers.pop("x-csrf-token")
+    assert client.post("/api/auth/logout").status_code == 403  # header required
+    assert client.post("/api/auth/logout", headers={"x-csrf-token": me["csrf_token"]}).status_code == 200
+
+
+def test_production_start_checks(monkeypatch):
+    import asyncio
+
+    import pytest
+
+    from app.config import get_settings
+    from app.main import lifespan, create_app
+
+    s = get_settings()
+    monkeypatch.setattr(s, "app_env", "production")
+    monkeypatch.setattr(s, "secret_key", "a-real-production-secret-key-123456")
+    monkeypatch.setattr(s, "whatsapp_enabled", False)
+    monkeypatch.setattr(s, "messaging_provider", "dev")
+    monkeypatch.setattr(s, "whatsapp_app_secret", "dev-app-secret")  # the insecure defaults
+    monkeypatch.setattr(s, "whatsapp_verify_token", "dev-verify-token")
+
+    async def start():
+        async with lifespan(create_app()):
+            pass
+
+    asyncio.run(start())  # Telegram-only production start must not need WhatsApp secrets
+    monkeypatch.setattr(s, "whatsapp_enabled", True)
+    with pytest.raises(RuntimeError):
+        asyncio.run(start())
+    monkeypatch.setattr(s, "whatsapp_enabled", False)
+    monkeypatch.setattr(s, "secret_key", "dev-insecure-secret-change-me")
+    with pytest.raises(RuntimeError):
+        asyncio.run(start())

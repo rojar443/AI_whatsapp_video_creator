@@ -39,7 +39,9 @@ class Outbox:
         self.ids.append(m.id)
         return m
 
-    def text(self, body: str) -> Message:
+    def text(self, body: str) -> Message | None:
+        if not body.strip():  # templates can be switched off by config (return empty)
+            return None
         return self._add("text", body)
 
     def buttons(self, body: str, buttons: list[tuple[str, str]]) -> Message:

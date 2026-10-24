@@ -1,0 +1,20 @@
+# HTTPS on 443. Port 80 is only used to get certificates and redirect to https.
+# 1) A hostname that resolves to the server (a domain, or <ip-with-dashes>.sslip.io): trusted Let's Encrypt certificate.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	request_body {
+		max_size 120MB
+	}
+	reverse_proxy web:3100
+}
+
+# 2) The raw IP: a bare IP can't get a trusted public certificate, so Caddy signs one itself
+#    (browsers warn once; Telegram is unaffected because the bot only makes outgoing calls).
+{$SITE_IP} {
+	tls internal
+	encode zstd gzip
+	request_body {
+		max_size 120MB
+	}
+	reverse_proxy web:3100
+}
