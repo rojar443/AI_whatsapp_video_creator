@@ -3,9 +3,11 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     UV_HTTP_TIMEOUT=600 UV_CONCURRENT_DOWNLOADS=4 UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=0
 
-# ffmpeg (libass for captions, zoompan/xfade), espeak-ng (offline fallback voice), fonts.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg espeak-ng fonts-dejavu-core curl \
+# ffmpeg (libass for captions, zoompan/xfade) + fonts. APT_EXTRA=espeak-ng adds the offline demo voice.
+ARG APT_EXTRA=""
+RUN apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 update \
+    && apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 install -y --no-install-recommends \
+        ffmpeg fonts-dejavu-core curl ${APT_EXTRA} \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --default-timeout=600 uv

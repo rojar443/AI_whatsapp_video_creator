@@ -106,6 +106,11 @@ def build_plan(db: Session, project: VideoProject, row: VideoPreferences) -> dic
         USAGE_SINK.reset(token)
     _record_usage(db, project.user_id, sink)
 
+    for q in quality.results:  # surface quality results on the uploads (dashboard)
+        row_asset = db.get(ProjectAsset, q.asset_id)
+        if row_asset is not None and row_asset.project_id == project.id:
+            row_asset.quality_score = q.score
+            row_asset.quality_flags = {"flags": q.flags, "duplicate_of": q.duplicate_of, "keep": q.keep}
     labels = asset_labels(db, project.id)
     dropped = [{"asset_id": q.asset_id, "label": labels.get(q.asset_id, "a clip"),
                 "reason": ", ".join(FLAG_TEXT.get(f, f) for f in q.flags) or q.reason or "low quality"}

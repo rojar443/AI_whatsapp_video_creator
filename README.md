@@ -25,7 +25,7 @@ to fit WhatsApp's 16 MB → validation → delivery. **Every step is a configura
 ## Quick start (offline demo)
 ```bash
 cp .env.example .env
-sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=espeak/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
+sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=mock/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
 docker compose up --build -d
 ```
 Open http://localhost:3100/dev/whatsapp → 📎 → **Send sample footage** → *"That's all. Make it a cinematic

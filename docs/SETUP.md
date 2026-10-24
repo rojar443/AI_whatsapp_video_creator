@@ -1,12 +1,13 @@
 # Setup, running, tests and deployment
 
 ## 1. Local demo mode (no accounts needed)
-Runs fully offline with the rules agent, mock/espeak voice, sample footage and the WhatsApp simulator.
+Runs fully offline with the rules agent, a silent placeholder voice, sample footage and the WhatsApp simulator.
+For an audible offline voice build with `docker compose build --build-arg APT_EXTRA=espeak-ng` and set `TTS_PROVIDER=espeak`.
 
 ```bash
 cp .env.example .env
 # offline demo values:
-sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=espeak/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
+sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=mock/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
 docker compose up --build -d          # postgres, redis, api (:8100), worker, web (:3100)
 docker compose logs -f api worker     # watch
 ```

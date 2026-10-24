@@ -8,9 +8,9 @@ from app.config import get_settings
 from app.media import ffmpeg
 
 VIDEO_MIME = {"video/mp4": "mp4", "video/3gpp": "3gp", "video/quicktime": "mov", "video/webm": "webm"}
-IMAGE_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic"}
+IMAGE_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}  # HEIC: ask for JPEG
 VIDEO_CODECS = {"h264", "hevc", "vp8", "vp9", "av1", "mpeg4", "h263"}
-IMAGE_CODECS = {"mjpeg", "png", "webp", "hevc"}
+IMAGE_CODECS = {"mjpeg", "png", "webp"}
 _MAGIC = {
     "jpg": [b"\xff\xd8\xff"], "png": [b"\x89PNG"], "webp": [b"RIFF"], "webm": [b"\x1aE\xdf\xa3"],
 }

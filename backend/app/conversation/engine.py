@@ -251,6 +251,7 @@ class ConversationEngine:
         if project.status == S.awaiting_confirmation.value:  # plan is stale now
             project.confirmation_nonce = None
         project.status = S.collecting_media.value
+        project.stage = None  # any in-flight plan is now stale
         project.batch_closed_at = None
         project.last_media_at = utcnow()
         asset = ProjectAsset(project_id=project.id, user_id=user.id, source_message_id=msg.id,
