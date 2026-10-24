@@ -25,7 +25,9 @@ Settings → **Source → Root Directory**: `/backend`. (The repo root only has 
 and fails with "could not pick a build plan". With the root directory set, Railway uses `backend/Dockerfile`.)
 Rename the service to `backend`.
 
-* **Settings → Deploy → Custom Start Command:** `bash start_all.sh`
+* The start command (`bash start_all.sh`), the Dockerfile builder and the health check come from `backend/railway.json`.
+  If you ever see "railpack process exited with an error", the service is not building from `/backend`: re-check the
+  Root Directory, the branch, and under Settings → Build that the builder is **Dockerfile**.
 * **Settings → Networking:** do **not** generate a public domain.
 * **Volumes:** + New → Volume, mount path `/app/var` (uploaded clips and finished reels live here).
 * **Variables** (use the Variables tab → Raw editor; `${{...}}` are Railway references):
