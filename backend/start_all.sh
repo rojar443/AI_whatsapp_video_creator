@@ -4,6 +4,17 @@
 # When you outgrow this, split it into api / worker / telegram services and switch to STORAGE_BACKEND=s3.
 set -e
 
+# Fail fast with a readable message instead of a long traceback when Railway variables are missing.
+missing=""
+case "${DATABASE_URL:-}" in postgres://*|postgresql://*|postgresql+psycopg://*) ;; *) missing="$missing DATABASE_URL(must be the Postgres URL, e.g. \${{Postgres.DATABASE_URL}})";; esac
+if [ "${TASK_BACKEND:-celery}" = "celery" ] && [ -z "${REDIS_URL:-}" ]; then missing="$missing REDIS_URL(e.g. \${{Redis.REDIS_URL}})"; fi
+if [ "${APP_ENV:-}" = "production" ] && [ -z "${SECRET_KEY:-}" ]; then missing="$missing SECRET_KEY"; fi
+if [ -n "$missing" ]; then
+  echo "ERROR: missing or wrong Railway variables on this service:$missing" >&2
+  echo "See docs/RAILWAY.md, section 2." >&2
+  exit 1
+fi
+
 alembic upgrade head
 
 celery -A app.jobs.celery_app worker -B -Q default,media \
