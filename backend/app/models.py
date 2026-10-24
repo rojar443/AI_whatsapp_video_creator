@@ -66,9 +66,9 @@ TZ = DateTime(timezone=True)
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True)  # None: WhatsApp-only
     name: Mapped[str] = mapped_column(String(120))
-    password_hash: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     phone_e164: Mapped[str] = mapped_column(String(20), index=True)
     role: Mapped[str] = mapped_column(String(20), default="user")  # user | admin
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | suspended
@@ -122,6 +122,27 @@ class WhatsAppAccount(Base):
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
 
     user: Mapped[User | None] = relationship(back_populates="whatsapp_account", foreign_keys=[user_id])
+
+
+class LoginChallenge(Base):
+    """One-time code a visitor must send from their WhatsApp number (`LOGIN <code>`).
+
+    purpose=login: starts a session (and creates the account for a new number).
+    purpose=reauth: proves a signed-in user still controls their linked number (user_id set up front).
+    """
+
+    __tablename__ = "login_challenges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    purpose: Mapped[str] = mapped_column(String(10), default="login")  # login | reauth
+    wa_id: Mapped[str] = mapped_column(String(20), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    poll_secret_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | confirmed | consumed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(TZ)
+    expires_at: Mapped[datetime] = mapped_column(TZ)
+    created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow)
 
 
 class Conversation(Base):

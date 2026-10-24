@@ -28,7 +28,7 @@ from app.agents.rules import RulesAgentProvider
 from app.config import get_settings
 from app.conversation import replies
 from app.conversation import requirements as req
-from app.conversation.safety import is_explicit_confirmation, parse_link_code
+from app.conversation.safety import is_explicit_confirmation, parse_link_code, parse_login_code
 from app.jobs.queue import enqueue
 from app.messaging.base import SendError
 from app.models import (
@@ -46,7 +46,7 @@ from app.models import (
     utcnow,
 )
 from app.security import new_token, sha256_hex, sign_asset_url
-from app.services import credits
+from app.services import credits, login
 from app.services.audit import audit
 from app.services.outbox import Outbox
 from app.transcription import TranscriptionError, looks_like_audio
@@ -94,6 +94,10 @@ class ConversationEngine:
     def _handle(self, msg: Message, conv: Conversation, out: Outbox) -> None:
         wa: WhatsAppAccount = conv.whatsapp_account
         if self._rate_limited(conv, msg, out):
+            return
+        login_code = parse_login_code(msg.body or "") if msg.kind == "text" else None
+        if login_code:
+            self._handle_login(msg, wa, conv, out, login_code)
             return
         user = self.db.get(User, wa.user_id) if wa.user_id else None
         if user is None or wa.status != "linked":
@@ -200,6 +204,46 @@ class ConversationEngine:
                 out.text(replies.render("rate_limited"))
             return True
         return False
+
+    def _handle_login(self, msg: Message, wa: WhatsAppAccount, conv: Conversation, out: Outbox, code: str) -> None:
+        """`LOGIN <code>` from linked and unlinked senders alike. The number comes from the webhook."""
+        web = self.settings.web_base_url
+        ch = login.match_code(self.db, wa.wa_id, code)
+        if ch is None:
+            out.text(replies.render("login_failed", {"web_url": web}))
+            return
+        owner = self.db.get(User, wa.user_id) if wa.user_id and wa.status == "linked" else None
+        if ch.purpose == "reauth":
+            if owner is None or owner.id != ch.user_id:
+                out.text(replies.render("login_failed", {"web_url": web}))
+                return
+            user = owner
+        elif owner is not None:
+            user = owner
+        else:
+            # Nobody has verified this number yet: the first to prove it owns it (this message) claims it.
+            # An email account that merely typed the number is deliberately not matched.
+            user = User(email=None, password_hash=None, name=(wa.profile_name or "ReelChat user")[:120],
+                        phone_e164="+" + wa.wa_id, credits_balance=0)
+            self.db.add(user)
+            self.db.flush()
+            credits.grant(self.db, user, self.settings.default_credits, key=f"signup:{user.id}")
+            wa.user_id, wa.status = user.id, "linked"
+            wa.linked_at = wa.opted_in_at = utcnow()
+            wa.pending_user_id = wa.link_code_hash = wa.link_code_expires_at = None
+            wa.link_attempts = 0
+            conv.user_id = out.conv.user_id = user.id
+            audit(self.db, "user.registered_whatsapp", actor_id=user.id, target_type="user", target_id=user.id)
+            audit(self.db, "whatsapp.linked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id)
+        msg.user_id = user.id
+        if user.status != "active":
+            ch.status = "denied"
+            out.text(replies.render("login_denied"))
+            return
+        ch.status, ch.user_id = "confirmed", user.id
+        audit(self.db, "auth.login_confirmed" if ch.purpose == "login" else "auth.reauth_confirmed",
+              actor_id=user.id, target_type="login_challenge", target_id=ch.id)
+        out.text(replies.render("login_confirmed"))
 
     def _handle_unlinked(self, msg: Message, wa: WhatsAppAccount, conv: Conversation, out: Outbox) -> None:
         code = parse_link_code(msg.body or "") if msg.kind == "text" else None

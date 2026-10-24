@@ -19,6 +19,15 @@ Conventions
 | POST | `/api/auth/verify-email` | `{token}` | token is HMAC-signed, 48 h |
 | POST | `/api/auth/resend-verification` | – | 3/hour |
 
+### WhatsApp login (no password)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/auth/whatsapp/start` | `{phone, accept_terms}` → `{challenge_id, code, message:"LOGIN 123456", send_from, business_number, wa_me_url, expires_in_minutes}`; sets HttpOnly `rc_login` cookie (poll secret). 10/5 min/IP, 5/10 min/number |
+| GET | `/api/auth/whatsapp/status?id=` | Needs the `rc_login` cookie of the browser that started it (else 404). `{status:"pending"}` until the user sends `LOGIN <code>` from that number, then **once** `{status:"confirmed", user, csrf_token}` and the session cookies are set; afterwards 404. `{status:"expired"}` after the TTL; 403 for a suspended account |
+
+A confirmed login signs in the account that has this number **linked**; if none, a new WhatsApp-only account (no email/password) is created with the signup credits. A number merely typed into an email account is never matched.
+
 ## Account
 
 | Method | Path | Notes |
@@ -26,8 +35,11 @@ Conventions
 | GET | `/api/me` | profile, credits, `whatsapp.status` = `linked` \| `pending` \| `not_linked` |
 | GET | `/api/me/usage` | credit balance + ledger |
 | POST | `/api/me/whatsapp/link` | requires verified email → `{code, message:"LINK 123456", wa_me_url, expires_in_minutes}`. The user sends the message **from their registered number**. 15 min, 5 attempts |
-| DELETE | `/api/me/whatsapp` | unlink (stops all messages) |
-| POST | `/api/me/delete` | `{password}` — deletes account, conversations, messages, projects, files |
+| DELETE | `/api/me/whatsapp` | unlink (stops all messages); 409 if WhatsApp is the account's only login method |
+| POST | `/api/me/reauth/start` | requires linked WhatsApp → same shape as login start (no cookie). The user sends `LOGIN <code>` from the linked number. 10/hour |
+| GET | `/api/me/reauth/{id}` | `{status: pending\|confirmed\|consumed\|expired}` |
+| POST | `/api/me/credentials` | `{email, password(≥10), reauth_challenge_id}` — WhatsApp-only account adds email + password login (verification email sent). 409 if the email belongs to another account (never merges) or a password already exists |
+| POST | `/api/me/delete` | `{password}` **or** `{reauth_challenge_id}` — deletes account, conversations, messages, projects, files |
 
 ## Projects & files
 

@@ -1,13 +1,14 @@
 import Link from "next/link";
 
 const demo: [string, "in" | "out"][] = [
-  ["Create a motivational Reel about fitness", "out"],
-  ["Nice — fitness. Where will you post it, and how long should it be?", "in"],
+  ["🎞️ beach.mp4 · hike.mp4 · old-town.mp4", "out"],
+  ["I want to make a travel reel - cinematic adventure from these videos", "out"],
+  ["Love these clips! Where will you post it, and how long should it be? I'll pick the best moments.", "in"],
   ["Instagram, 30 seconds", "out"],
-  ["Here's your video plan 🎬\n• Vibe: Motivational\n• Style: Cinematic (suggested)\n• Length: 30 s\nCost: 2 credits. Reply yes to generate.", "in"],
+  ["Here's your reel plan 🎬\n• Vibe: Cinematic adventure\n• Clips: 3 uploaded (about 2 min)\n• Length: 30 s · epic music\nCost: 2 credits. Reply yes to edit.", "in"],
   ["yes", "out"],
-  ["✅ Your video is ready!", "in"],
-  ["Make it more cinematic, faster pace", "out"],
+  ["✅ Your reel is ready!", "in"],
+  ["Make the opening faster and end on the sunset", "out"],
 ];
 
 export default function Home() {
@@ -17,8 +18,8 @@ export default function Home() {
         <div>
           <h1>Make Reels and Shorts by chatting on WhatsApp</h1>
           <p className="lead">
-            Describe your idea in a text or a voice note. ReelChat asks a couple of quick questions, shows you a plan,
-            and sends the finished vertical video back to the same chat.
+            Send your clips and tell us the story you want - a travel adventure, a product launch, a family highlight.
+            ReelChat asks a couple of quick questions, shows you a plan, and sends the finished vertical reel back to the same chat.
           </p>
           <div className="row">
             <Link className="btn" href="/register">Create free account</Link>
@@ -42,17 +43,17 @@ export default function Home() {
             <ol className="steps">
               <li><strong>Sign up</strong> with your email and WhatsApp number.</li>
               <li><strong>Link WhatsApp</strong> by sending the 6-digit code we show you.</li>
-              <li><strong>Chat your idea</strong> — topic, vibe, length — by text or voice note.</li>
+              <li><strong>Send your videos</strong> and describe the reel you want - vibe, length, platform - by text or voice note.</li>
               <li><strong>Approve the plan.</strong> Nothing is generated (or charged) until you say yes.</li>
-              <li><strong>Get your video</strong> in the chat, and ask for changes any time.</li>
+              <li><strong>Get your reel</strong> in the chat, and ask for changes any time.</li>
             </ol>
           </div>
           <div className="grid grid-2">
             {[
-              ["Conversational", "No long forms. Sensible defaults, and only the questions that matter."],
+              ["Your footage, edited for you", "Upload your clips; we find the best moments, cut them to music and format for vertical."],
               ["Voice notes", "Speak in English, Hindi, Malayalam and more."],
               ["Made for vertical", "9:16 MP4 for Instagram Reels, YouTube Shorts and more."],
-              ["Revisions", "\"Make it more cinematic\", \"use a faster pace\" — just ask."],
+              ["Revisions", "\"Make it more cinematic\", \"start with the sunset\" — just ask."],
               ["Your history", "Every project, revision and download on your dashboard."],
               ["Fair credits", "Failed videos are refunded automatically. No double charges."],
             ].map(([t, d]) => (

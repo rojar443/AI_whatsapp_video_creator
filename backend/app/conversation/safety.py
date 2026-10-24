@@ -39,3 +39,11 @@ _LINK_RE = re.compile(r"^\s*link\s*[:#-]?\s*(\d{6})\s*$", re.IGNORECASE)
 def parse_link_code(text: str) -> str | None:
     m = _LINK_RE.match(text or "")
     return m.group(1) if m else None
+
+
+_LOGIN_RE = re.compile(r"^\s*log\s?in\s*[:#-]?\s*(\d{6})\s*$", re.IGNORECASE)
+
+
+def parse_login_code(text: str) -> str | None:
+    m = _LOGIN_RE.match(text or "")
+    return m.group(1) if m else None

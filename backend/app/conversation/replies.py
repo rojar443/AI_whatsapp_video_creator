@@ -41,6 +41,12 @@ TEMPLATES: dict[str, str] = {
         "What video would you like to make?"
     ),
     "link_failed": "That code didn't work or has expired. Generate a new one on your dashboard: {web_url}/dashboard",
+    "login_confirmed": (
+        "✅ You're signed in to ReelChat. Go back to the website - it will continue automatically.\n"
+        "If this wasn't you, ignore this message and don't share codes with anyone."
+    ),
+    "login_failed": "That login code didn't work or has expired. Request a new one on {web_url}/login",
+    "login_denied": "This account can't sign in right now. Contact support if you think this is a mistake.",
     "email_unverified": "Please verify your email address first: {web_url}/dashboard",
     "suspended": "Your account is suspended. Contact support if you think this is a mistake.",
     "rate_limited": "You're sending messages very quickly — please wait a minute and try again.",
