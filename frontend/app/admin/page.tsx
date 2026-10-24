@@ -7,12 +7,18 @@ import { useMe } from "@/lib/useMe";
 type Channel = { kind: "telegram" | "whatsapp" | "web"; id: string | null; name: string | null; status: string };
 type Row = {
   id: string; name: string; email: string | null; channels: Channel[]; registered: boolean; role: string;
-  status: string; credits: number; projects: number; reels: number; messages: number;
+  status: string; credits: number; projects: number; reels: number; messages: number; tokens: number; cost_usd: number;
   first_seen: string | null; last_seen: string | null;
 };
 type Page = { items: Row[]; total: number; limit: number; offset: number };
+type Summary = {
+  days: number; users: number; talked_to_bot: number; tokens: number; cost_usd: number;
+  by_provider: { provider: string; kind: string; tokens: number; cost_usd: number }[];
+};
 
 const LIMIT = 25;
+const fmtNum = (n: number) => n.toLocaleString();
+const fmtUsd = (n: number) => (n < 0.01 && n > 0 ? "<$0.01" : `$${n.toFixed(2)}`);
 const CHANNEL_LABEL: Record<string, string> = { telegram: "Telegram", whatsapp: "WhatsApp", web: "Website" };
 
 export default function Admin() {
@@ -20,6 +26,8 @@ export default function Admin() {
   const [data, setData] = useState<Page | null>(null);
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("");
+  const [talked, setTalked] = useState(true);
+  const [sum, setSum] = useState<Summary | null>(null);
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
 
@@ -28,12 +36,13 @@ export default function Admin() {
       const qs = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
       if (q.trim()) qs.set("q", q.trim());
       if (channel) qs.set("channel", channel);
+      if (talked) qs.set("talked", "true");
       setData(await api<Page>(`/api/admin/users?${qs}`));
       setError("");
     } catch (e: any) {
       setError(e.message);
     }
-  }, [q, channel, offset]);
+  }, [q, channel, talked, offset]);
 
   useEffect(() => {
     if (me?.role === "admin") {
@@ -41,6 +50,10 @@ export default function Admin() {
       return () => clearTimeout(t);
     }
   }, [me, load]);
+
+  useEffect(() => {
+    if (me?.role === "admin") api<Summary>("/api/admin/summary?days=30").then(setSum).catch(() => {});
+  }, [me, data]);
 
   async function patch(id: string, body: { status?: string; credits_delta?: number }) {
     try {
@@ -59,7 +72,18 @@ export default function Admin() {
     <div className="stack">
       <div className="row spread">
         <h1 style={{ margin: 0 }}>Users</h1>
-        <span className="badge ok">{total} {total === 1 ? "person has" : "people have"} used the app</span>
+      </div>
+      <div className="grid grid-3">
+        <div className="card"><div className="small muted">Talked to the bot</div><h2 style={{ margin: 0 }}>{sum ? fmtNum(sum.talked_to_bot) : "—"}</h2>
+          <div className="small muted">of {sum ? fmtNum(sum.users) : "—"} people in total</div></div>
+        <div className="card"><div className="small muted">AI tokens, last 30 days</div><h2 style={{ margin: 0 }}>{sum ? fmtNum(sum.tokens) : "—"}</h2>
+          <div className="small muted">language-model input + output</div></div>
+        <div className="card"><div className="small muted">Estimated cost, last 30 days</div><h2 style={{ margin: 0 }}>{sum ? fmtUsd(sum.cost_usd) : "—"}</h2>
+          <div className="small muted">
+            {sum && sum.by_provider.length > 0
+              ? sum.by_provider.filter((p) => p.tokens > 0).map((p) => `${p.provider}: ${fmtNum(p.tokens)}`).join(" · ") || "no AI calls yet"
+              : "no usage yet"}
+          </div></div>
       </div>
       <div className="card">
         <div className="row" style={{ marginBottom: 12 }}>
@@ -70,6 +94,10 @@ export default function Admin() {
             onChange={(e) => { setQ(e.target.value); setOffset(0); }}
             style={{ maxWidth: 380 }}
           />
+          <label className="check" style={{ marginBottom: 0 }}>
+            <input type="checkbox" checked={talked} onChange={(e) => { setTalked(e.target.checked); setOffset(0); }} />
+            <span>Only people who talked to the bot</span>
+          </label>
           <select aria-label="Channel" value={channel} onChange={(e) => { setChannel(e.target.value); setOffset(0); }}
                   style={{ maxWidth: 170 }}>
             <option value="">All channels</option>
@@ -83,7 +111,7 @@ export default function Admin() {
           <table>
             <thead>
               <tr>
-                <th>Person</th><th>Channel</th><th>First seen</th><th>Last seen</th><th>Msgs</th><th>Reels</th>
+                <th>Person</th><th>Channel</th><th>First seen</th><th>Last seen</th><th>Msgs</th><th>Reels</th><th>AI tokens</th><th>Est. cost</th>
                 <th>Credits</th><th>Status</th><th />
               </tr>
             </thead>
@@ -107,6 +135,8 @@ export default function Admin() {
                   <td className="small" title={u.last_seen ?? ""}>{fmtDate(u.last_seen)}</td>
                   <td>{u.messages}</td>
                   <td title={`${u.projects} projects`}>{u.reels}</td>
+                  <td>{fmtNum(u.tokens)}</td>
+                  <td className="small">{fmtUsd(u.cost_usd)}</td>
                   <td>{u.credits}</td>
                   <td><span className={`badge ${u.status === "active" ? "ok" : "failed"}`}>{u.status}</span></td>
                   <td className="row">
@@ -123,7 +153,7 @@ export default function Admin() {
                 </tr>
               ))}
               {data && data.items.length === 0 && (
-                <tr><td colSpan={9} className="muted">No one matches.</td></tr>
+                <tr><td colSpan={11} className="muted">No one matches.{talked ? " Untick the box to include people who never messaged the bot." : ""}</td></tr>
               )}
             </tbody>
           </table>
