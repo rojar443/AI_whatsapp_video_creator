@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import TelegramCard from "@/components/TelegramCard";
 import WhatsAppCard from "@/components/WhatsAppCard";
 import { api, fmtDate, ProjectSummary, STATUS_LABEL } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
@@ -28,6 +29,7 @@ export default function Dashboard() {
       </div>
       <div className="grid grid-2">
         <WhatsAppCard me={me} onChange={refresh} />
+        <TelegramCard me={me} onChange={refresh} />
         <div className="card">
           <h3>Quick tips</h3>
           <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>

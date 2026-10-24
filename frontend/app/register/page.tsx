@@ -68,10 +68,10 @@ export default function Register() {
             <input id="email" name="email" type="email" required autoComplete="email" />
           </div>
           <div className="field">
-            <label htmlFor="phone">WhatsApp number</label>
-            <input id="phone" name="phone" required placeholder="+91 98765 43210" autoComplete="tel"
+            <label htmlFor="phone">WhatsApp number (optional)</label>
+            <input id="phone" name="phone" placeholder="+91 98765 43210" autoComplete="tel"
                    value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <p className="small muted" style={{ margin: "4px 0 0" }}>International format, with country code.</p>
+            <p className="small muted" style={{ margin: "4px 0 0" }}>International format, with country code. Skip it if you only use Telegram.</p>
           </div>
           <div className="field">
             <label htmlFor="password">Password</label>

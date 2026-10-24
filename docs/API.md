@@ -13,6 +13,8 @@ Auth: `rc_session` HttpOnly cookie; every non-GET request needs `X-CSRF-Token` =
 | GET | `/api/me/usage` | credit ledger |
 | POST | `/api/me/whatsapp/link` | → `{code, message: "LINK 123456", wa_me_url}`; send it **from the registered number**; merges anonymous drafts |
 | DELETE | `/api/me/whatsapp` | unlink |
+| POST | `/api/me/telegram/link` | → `{url: https://t.me/<bot>?start=link_<signed token>}`; opening it in Telegram links that chat (15 min) |
+| DELETE | `/api/me/telegram` | unlink Telegram |
 | POST | `/api/me/delete` | `{password}` — deletes account, chats, projects, files |
 
 ## Projects & files

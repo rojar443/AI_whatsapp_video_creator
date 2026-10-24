@@ -14,6 +14,7 @@ to fit WhatsApp's 16 MB → validation → delivery. **Every step is a configura
 |---|---|
 | [docs/PRD.md](docs/PRD.md) | short product requirements, limits, risks, external services |
 | [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) | connect a real WhatsApp number (Meta app, token, webhook, Cloudflare Tunnel) |
+| [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | use a Telegram bot as the input channel (works on localhost) |
 | [docs/SETUP.md](docs/SETUP.md) | run locally, tests, production deployment |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | design decisions, state machine, ER diagram, code map |
 | [docs/PIPELINE_AGENTS.md](docs/PIPELINE_AGENTS.md) | plug in your own processing agents |
@@ -35,4 +36,4 @@ travel reel with a calm voiceover."* → **✅ Proceed**. For the real thing, fo
 ## Stack
 FastAPI · SQLAlchemy/Alembic · PostgreSQL · Redis + Celery · FFmpeg · Next.js 15 · Docker Compose ·
 Cloudflare Tunnel. AI: Google Gemini (initial), adapters for OpenAI/compatible (Ollama, vLLM) and Anthropic, plus
-an offline rules agent. Voice: ElevenLabs (espeak/mock offline). Messaging: WhatsApp Cloud API (+ dev simulator).
+an offline rules agent. Voice: ElevenLabs (espeak/mock offline). Messaging: WhatsApp Cloud API and Telegram Bot API (+ dev simulator).

@@ -43,9 +43,10 @@ export type Me = {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone: string | null;
   email_verified: boolean;
   credits: number;
+  telegram: { enabled: boolean; linked: boolean; linked_at: string | null };
   whatsapp: { status: "linked" | "pending" | "not_linked"; number: string | null; linked_at: string | null; business_number: string };
 };
 

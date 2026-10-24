@@ -34,7 +34,7 @@ TEMPLATES: dict[str, str] = {
     "delivered": "✅ Your reel is ready! Want any changes? (e.g. \"shorter\", \"more cinematic\", \"start with the beach\")",
     "delivered_link": "✅ Your reel *{title}* is ready! Download (link expires in {hours} h):",
     "demo_notice": "⚠️ Demo mode: this reel used offline stand-ins ({what}) instead of the real AI services.",
-    "anon_register_nudge": "Want to keep your reels and get more credits? Register at {web_url}/register?phone={phone} and link this number.",
+    "anon_register_nudge": "Want to keep your reels and get more credits? Register at {web_url}/register?phone={phone} and link this chat.",
     "approve": "Glad you like it! 🎉 Send more clips anytime for a new reel.",
     "failed": "😕 Sorry, I couldn't make your reel ({reason}). Your {credits} credit(s) were refunded.\nReply *retry* to try again — you won't be charged twice.",
     "retry_started": "🔁 Trying again now.",

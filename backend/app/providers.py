@@ -85,18 +85,40 @@ def get_tts():
             return MockTTS()
 
 
+_telegram_cache: dict = {}
+
+
+def get_telegram():
+    """Telegram provider when TELEGRAM_BOT_TOKEN is set (one shared client), else None."""
+    if "telegram" in _overrides:
+        return _overrides["telegram"]
+    token = get_settings().telegram_bot_token
+    if not token:
+        return None
+    if _telegram_cache.get("token") != token:
+        from app.messaging.telegram import TelegramProvider
+
+        _telegram_cache.update(token=token, provider=TelegramProvider(token))
+    return _telegram_cache["provider"]
+
+
 def get_messaging():
+    """WhatsApp (or dev) provider, wrapped in a router that also serves Telegram chats when configured."""
     if "messaging" in _overrides:
         return _overrides["messaging"]
     s = get_settings()
     if s.messaging_provider == "meta":
         from app.messaging.meta_cloud import MetaCloudProvider
 
-        return MetaCloudProvider(s.whatsapp_access_token or "", s.whatsapp_phone_number_id or "",
-                                 s.whatsapp_api_version)
-    from app.messaging.dev import DevMessagingProvider
+        primary = MetaCloudProvider(s.whatsapp_access_token or "", s.whatsapp_phone_number_id or "",
+                                    s.whatsapp_api_version)
+    else:
+        from app.messaging.dev import DevMessagingProvider
 
-    return DevMessagingProvider()
+        primary = DevMessagingProvider()
+    from app.messaging.router import MessagingRouter
+
+    return MessagingRouter(primary, get_telegram())
 
 
 def health_report() -> dict[str, Any]:

@@ -80,7 +80,11 @@ def start_link(request: Request, user: User = Depends(current_user), db: Session
 
 @router.delete("/whatsapp")
 def unlink(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id))
+    return _unlink(request, user, db, "whatsapp", WhatsAppAccount.wa_id.not_like("tg:%"))
+
+
+def _unlink(request: Request, user: User, db: Session, label: str, cond):
+    wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id, cond))
     if wa is None:
         return {"ok": True}
     wa.user_id = None
@@ -89,10 +93,38 @@ def unlink(request: Request, user: User = Depends(current_user), db: Session = D
     if conv:
         conv.user_id = None
         conv.active_project_id = None
-    audit(db, "whatsapp.unlinked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id,
+    audit(db, f"{label}.unlinked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id,
           ip=client_ip(request))
     db.commit()
     return {"ok": True}
+
+
+@router.post("/telegram/link", dependencies=[Depends(rate_limit("tglink", 10, 3600))])
+def start_telegram_link(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Deep link `t.me/<bot>?start=link_<signed token>`: opening it in Telegram links that chat to this account."""
+    from app import providers
+    from app.messaging.base import SendError
+    from app.security import sign_payload
+
+    tg = providers.get_telegram()
+    if tg is None:
+        raise HTTPException(503, "Telegram is not configured on this server")
+    linked = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id,
+                                                     WhatsAppAccount.wa_id.like("tg:%"), WhatsAppAccount.status == "linked"))
+    if linked:
+        return {"status": "linked"}
+    try:
+        username = tg.me().get("username")
+    except SendError as e:
+        raise HTTPException(502, "Could not reach Telegram") from e
+    token = sign_payload({"uid": user.id}, "telegram-link", get_settings().link_code_ttl_minutes * 60)
+    return {"status": "pending", "bot": "@" + username, "url": f"https://t.me/{username}?start=link_{token}",
+            "expires_in_minutes": get_settings().link_code_ttl_minutes}
+
+
+@router.delete("/telegram")
+def unlink_telegram(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return _unlink(request, user, db, "telegram", WhatsAppAccount.wa_id.like("tg:%"))
 
 
 class DeleteAccountIn(BaseModel):
@@ -111,8 +143,7 @@ def delete_account(body: DeleteAccountIn, request: Request, response: Response,
             storage.delete(a.storage_key)
         except Exception:  # noqa: BLE001
             pass
-    wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id))
-    if wa:
+    for wa in db.scalars(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id)).all():
         db.execute(delete(Conversation).where(Conversation.whatsapp_account_id == wa.id))
         db.delete(wa)
     uid = user.id

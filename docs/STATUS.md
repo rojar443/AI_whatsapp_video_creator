@@ -13,12 +13,14 @@
 | Pipeline slots | builtin / `python:` plugin / HTTP agent per step, typed contracts, signed file URLs, retries, builtin fallback | `test_units.py` |
 | Selection | quality filter (dark/shaky/duplicate), scene split, Gemini vision scoring + heuristic fallback, hook/build/payoff sequencing fitted to length | `test_units.py`, `test_media.py` |
 | Narration & captions | Gemini script (template fallback), ElevenLabs with-timestamps → word timings → ASS captions | `test_units.py` (fake HTTP for ElevenLabs alignment) |
-| Rendering | 9:16 crop around subject, trims, photo slow zoom/pan, grade per style, fade/cut transitions, title, burned captions, narration + ducked music + original audio, bitrate from duration, re-encode until ≤ target, validation (dims, ratio, duration, H.264/AAC) | `test_media.py` |
+| Rendering | 9:16 crop around subject, trims, photo slow zoom/pan, grade per style, fade/cut transitions, title, burned captions, narration + ducked music + original audio, bitrate from duration, re-encode until ≤ target, validation (dims, ratio, duration, H.264/AAC) | `test_media.py` (real FFmpeg in Docker) |
 | Delivery | outbox in order, video ≤16 MB else signed link, attachment-rejected → link, retries, 24 h window: hold + template + release on reply | `test_flow.py` |
 | Jobs | Celery + Redis, enqueue-after-commit, idempotent tasks, retries with backoff, final-failure hooks, sweeper, retention purge | `test_flow.py` (inline backend); Celery path smoke-tested against Redis + Postgres |
 | Credits | reserve on confirm, refund on failure/cancel, one job per revision (UNIQUE), retry = same job, ledger | `test_flow.py` |
 | Web | register/login/verify, link WhatsApp, reels history with plan + uploads + jobs, download, usage, unlink, delete account, privacy/terms, dev simulator | `next build`; API tests |
 | Data | 14 tables incl. `project_assets`, `genre_playbooks`, `voice_profiles`; Alembic migration verified on Postgres (`alembic check` clean) | |
+
+| Telegram channel | Bot API long polling (text, photo, video, files, voice, buttons), `tg:<chat>` ids through the same engine, deep-link account linking, 20 MB download limit handled | `test_telegram.py` (fake Bot API) |
 
 ## Demo stand-ins (used when keys are missing — always labelled)
 | Stand-in | Real integration | Needs |
@@ -33,6 +35,9 @@
 | synthetic sample footage | real phone clips | a real phone |
 
 Reels made with stand-ins carry `is_demo` and a "Demo mode" WhatsApp notice. Nothing reports success it didn't achieve.
+
+## Test results
+88 tests pass in the Docker image with real FFmpeg (SQLite) and 81 on Postgres (FFmpeg tests skip where it's absent). The Celery + Redis + Postgres path was smoke-tested end to end with the simulator. The website builds (`next build`) and all pages respond through the API proxy.
 
 ## Not yet verified against live services
 The Gemini, ElevenLabs and Meta adapters are written against their documented APIs and covered with fake

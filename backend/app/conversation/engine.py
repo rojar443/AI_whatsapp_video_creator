@@ -114,6 +114,9 @@ class ConversationEngine:
         if code:
             self._handle_link(code, wa, conv, msg, out)
             return
+        if msg.kind == "text" and (msg.body or "").startswith("/start link_"):
+            self._handle_telegram_link(msg.body.split("link_", 1)[1].strip(), wa, conv, msg, out)
+            return
         user = self.db.get(User, wa.user_id) if wa.user_id else None
         if user is None:
             user = accounts.create_anonymous(self.db, wa)
@@ -378,7 +381,8 @@ class ConversationEngine:
         return project
 
     def _phone_q(self, conv: Conversation) -> str:
-        return quote("+" + conv.whatsapp_account.wa_id)
+        wa_id = conv.whatsapp_account.wa_id
+        return "" if wa_id.startswith("tg:") else quote("+" + wa_id)  # Telegram chats have no phone number
 
     def _rate_limited(self, conv: Conversation, msg: Message, out: Outbox) -> bool:
         if msg.kind in ("image", "video"):
@@ -412,8 +416,9 @@ class ConversationEngine:
         if user is None or user.status != "active" or user.is_anonymous:
             out.text(replies.render("not_registered_link", {"web_url": web}))
             return
-        for other in self.db.scalars(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id,
-                                                                    WhatsAppAccount.id != wa.id)).all():
+        for other in self.db.scalars(select(WhatsAppAccount).where(
+                WhatsAppAccount.user_id == user.id, WhatsAppAccount.id != wa.id,
+                WhatsAppAccount.wa_id.not_like("tg:%"))).all():  # one WhatsApp number per account
             other.user_id, other.status = None, "anonymous"
         wa.user_id = user.id
         wa.status = "linked"
@@ -427,6 +432,42 @@ class ConversationEngine:
         msg.user_id = user.id
         out.conv.user_id = user.id
         audit(self.db, "whatsapp.linked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id)
+        out.text(replies.render("linked", {"name": user.name.split(" ")[0], "web_url": web}))
+
+    def _handle_telegram_link(self, token: str, wa: WhatsAppAccount, conv: Conversation, msg: Message,
+                              out: Outbox) -> None:
+        """`/start link_<signed token>` from the website's "Connect Telegram" button."""
+        from app.security import TokenError, verify_payload
+
+        web = self.s.web_base_url
+        if not wa.wa_id.startswith("tg:"):
+            out.text(replies.render("not_registered_link", {"web_url": web}))
+            return
+        try:
+            data = verify_payload(token, "telegram-link")
+        except TokenError:
+            out.text(replies.render("not_registered_link", {"web_url": web}))
+            return
+        user = self.db.get(User, data.get("uid"))
+        if user is None or user.status != "active" or user.is_anonymous:
+            out.text(replies.render("not_registered_link", {"web_url": web}))
+            return
+        current = self.db.get(User, wa.user_id) if wa.user_id else None
+        if current is not None and current.id == user.id:
+            out.text(replies.render("already_linked"))
+            return
+        for other in self.db.scalars(select(WhatsAppAccount).where(
+                WhatsAppAccount.user_id == user.id, WhatsAppAccount.id != wa.id,
+                WhatsAppAccount.wa_id.like("tg:%"))).all():  # one Telegram chat per account
+            other.user_id, other.status = None, "anonymous"
+        wa.user_id, wa.status, wa.linked_at = user.id, "linked", utcnow()
+        self.db.flush()
+        if current is not None and current.is_anonymous:
+            accounts.merge_anonymous(self.db, current, user)
+        conv.user_id = user.id
+        msg.user_id = user.id
+        out.conv.user_id = user.id
+        audit(self.db, "telegram.linked", actor_id=user.id, target_type="whatsapp_account", target_id=wa.id)
         out.text(replies.render("linked", {"name": user.name.split(" ")[0], "web_url": web}))
 
     def _release_held_media(self, conv: Conversation) -> None:

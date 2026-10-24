@@ -25,7 +25,7 @@ export default function Simulator() {
     api<Me>("/api/me").then(setMe).catch(() => setMe(null));
   }, []);
 
-  const q = me ? "" : `?phone=${encodeURIComponent(phone)}`;
+  const q = me?.phone ? "" : `?phone=${encodeURIComponent(phone)}`;
   const load = useCallback(async () => {
     try {
       const r = await api<{ items: Msg[] }>(`/api/dev/whatsapp/messages${q}`);
@@ -62,7 +62,7 @@ export default function Simulator() {
   }
 
   const send = (body: { text?: string; button_id?: string; button_title?: string }) =>
-    call(() => api("/api/dev/whatsapp/send", { method: "POST", json: { ...body, phone: me ? undefined : phone } }));
+    call(() => api("/api/dev/whatsapp/send", { method: "POST", json: { ...body, phone: me?.phone ? undefined : phone } }));
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -75,7 +75,7 @@ export default function Simulator() {
   function upload(e: FormEvent<HTMLFormElement>, path: string) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    if (!me) fd.set("phone", phone);
+    if (!me?.phone) fd.set("phone", phone);
     call(() => api(path, { method: "POST", body: fd })).then(() => setPanel(""));
   }
 
@@ -88,9 +88,9 @@ export default function Simulator() {
         <h1 style={{ fontSize: "1.5rem" }}>WhatsApp simulator</h1>
         <p className="small muted">
           Messages go through the real webhook pipeline (signed payload → worker → agent) — dev only, nothing reaches
-          WhatsApp. {me ? <>Sending as <strong>{me.phone}</strong>.</> : "Not logged in: you're an anonymous WhatsApp user."}
+          WhatsApp. {me?.phone ? <>Sending as <strong>{me.phone}</strong>.</> : "You're an anonymous chat user (no account number): pick a test number below."}
         </p>
-        {!me && (
+        {!me?.phone && (
           <div className="field">
             <label htmlFor="ph">Test phone number</label>
             <input id="ph" value={phone} onChange={(e) => setPhone(e.target.value)} />

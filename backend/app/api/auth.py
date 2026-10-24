@@ -43,7 +43,7 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=10, max_length=200)
-    phone: str = Field(min_length=8, max_length=24)
+    phone: str | None = Field(default=None, max_length=24)  # optional: Telegram-only users
     accept_terms: bool
 
 
@@ -86,8 +86,8 @@ def register(body: RegisterIn, request: Request, response: Response, db: Session
     s = get_settings()
     if not body.accept_terms:
         raise HTTPException(422, "You must accept the terms and privacy policy")
-    phone = normalize_phone(body.phone)
-    if phone is None:
+    phone = normalize_phone(body.phone) if (body.phone or "").strip() else None
+    if (body.phone or "").strip() and phone is None:
         raise HTTPException(422, "Enter your WhatsApp number in international format, e.g. +91 98765 43210")
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):

@@ -64,6 +64,7 @@ def deliver_message(db: Session, msg: Message, provider) -> None:
     conv = db.get(Conversation, msg.conversation_id)
     to = conv.whatsapp_account.wa_id
     payload = msg.payload or {}
+    provider = provider.for_to(to) if hasattr(provider, "for_to") else provider  # per-channel rules
     if not in_window(conv) and provider.requires_templates_outside_window:
         if msg.kind == "video":
             # Media can't be sent outside the window. Send the approved template, keep the reel

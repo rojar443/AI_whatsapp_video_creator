@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     whatsapp_max_video_bytes: int = 16 * 1024 * 1024
     delivery_target_bytes: int = 15 * 1024 * 1024  # leave headroom under the 16 MB limit
 
+    # --- Telegram (optional second channel; long polling, no public URL needed) ---
+    telegram_bot_token: str | None = None
+    telegram_poll_timeout: int = 25
+
     # --- Storage ---
     storage_backend: str = "local"  # local | s3
     storage_local_dir: str = "./var/storage"

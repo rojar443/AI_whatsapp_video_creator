@@ -51,6 +51,17 @@ services:
     depends_on:
       api: {condition: service_healthy}  # api runs the migrations first
 
+  # Telegram input channel (long polling — no public URL needed).
+  # Set TELEGRAM_BOT_TOKEN in .env, then: docker compose --profile telegram up -d
+  telegram:
+    <<: *backend
+    command: ["python", "-m", "app.telegram_poller"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+    profiles: ["telegram"]
+    depends_on:
+      api: {condition: service_healthy}
+
   web:
     build: ./frontend
     environment: {BACKEND_URL: "http://api:8000"}

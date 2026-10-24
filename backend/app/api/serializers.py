@@ -18,7 +18,10 @@ def iso(dt) -> str | None:
 
 
 def user_out(db: Session, user: User) -> dict[str, Any]:
-    wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id, WhatsAppAccount.status == "linked"))
+    wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id, WhatsAppAccount.status == "linked",
+                                                 WhatsAppAccount.wa_id.not_like("tg:%")))
+    tg = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.user_id == user.id, WhatsAppAccount.status == "linked",
+                                                 WhatsAppAccount.wa_id.like("tg:%")))
     pending = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.pending_user_id == user.id))
     return {
         "id": user.id, "name": user.name, "email": user.email, "phone": user.phone_e164,
@@ -30,6 +33,8 @@ def user_out(db: Session, user: User) -> dict[str, Any]:
             "linked_at": iso(wa.linked_at) if wa else None,
             "business_number": get_settings().whatsapp_business_number,
         },
+        "telegram": {"enabled": bool(get_settings().telegram_bot_token), "linked": tg is not None,
+                     "linked_at": iso(tg.linked_at) if tg else None},
     }
 
 
