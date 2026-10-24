@@ -1,0 +1,22 @@
+{
+  "genre": "daily",
+  "hook": "A relatable moment or curiosity-inducing first shot.",
+  "structure": ["morning", "activities", "wind-down"],
+  "pacing": {
+    "avg_clip_seconds": 1.8,
+    "cuts_per_10s": 5.5,
+    "pace_notes": "Casual, natural rhythm. Let the closing shot run longer (2-3 seconds)."
+  },
+  "length_seconds": {"min": 15, "max": 30},
+  "visual_treatment": {
+    "grade": "Natural, slightly vibrant color grade",
+    "transitions": "Hard cuts",
+    "text_style": "Bold white captions in the lower third"
+  },
+  "audio": {"music_energy": "medium", "narration": "voiceover or original audio"},
+  "selection_rules": {
+    "prefer": ["faces", "activity", "food", "transitions between moments"],
+    "avoid": ["dark clips", "blurry clips", "shaky clips", "near-duplicate clips", "any single clip longer than 3.5 seconds"]
+  },
+  "confidence": "Hypothesis; not yet derived from reference reels."
+}

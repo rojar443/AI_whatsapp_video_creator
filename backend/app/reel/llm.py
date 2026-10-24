@@ -29,10 +29,17 @@ class VisionLLMError(Exception):
 
 class VisionLLM(ABC):
     name = "base"
+    supports_video = False  # True when the model can watch video files and cite timestamps
 
     @abstractmethod
     def analyze_images(self, prompt: str, images: list[tuple[str, str]], schema: dict) -> dict:
         """One call: prompt + labelled images -> JSON matching schema."""
+
+    def analyze_videos(self, prompt: str, videos: list[tuple[str, str]], images: list[tuple[str, str]],
+                       schema: dict) -> dict:
+        """One call: prompt + labelled video files (+ images) -> JSON matching schema.
+        Only for supports_video models; callers fall back to frames otherwise."""
+        raise NotImplementedError(f"{self.name} cannot take video input")
 
     @abstractmethod
     def run_tools(self, system: str, user: str, tools: list[dict], handler: ToolHandler,
@@ -115,8 +122,98 @@ class OpenAIVision(VisionLLM):
         raise VisionLLMError(f"no final answer after {max_steps} steps")
 
 
+def _parse_json(text: str) -> dict:
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`").removeprefix("json").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise VisionLLMError("model returned invalid JSON") from e
+
+
+class GeminiVision(VisionLLM):
+    """Google Gemini: watches uploaded video files natively and cites timestamps.
+    Same schema-in-prompt + JSON response approach as app.agents.llm.GeminiAgentProvider."""
+
+    name = "gemini"
+    supports_video = True
+
+    def __init__(self, model: str | None = None, api_key: str | None = None, client: Any = None,
+                 upload_timeout: float = 180.0):
+        self.model = model or os.environ.get("REEL_LLM_MODEL", "gemini-2.5-flash")
+        self.upload_timeout = upload_timeout
+        if client is None:
+            from google import genai
+
+            api_key = api_key or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY is required for the gemini vision provider")
+            client = genai.Client(api_key=api_key)
+        self.client = client
+
+    def _generate(self, parts: list, prompt: str, schema: dict) -> dict:
+        from google.genai import types
+
+        system = prompt + "\n\nRespond with ONLY a JSON object matching this JSON Schema:\n" + json.dumps(schema)
+        resp = self.client.models.generate_content(
+            model=self.model, contents=parts,
+            config=types.GenerateContentConfig(system_instruction=system,
+                                               response_mime_type="application/json"))
+        return _parse_json(resp.text)
+
+    def _image_parts(self, images: list[tuple[str, str]]) -> list:
+        from google.genai import types
+
+        parts: list = []
+        for label, path in images:
+            with open(path, "rb") as f:
+                parts += [label, types.Part.from_bytes(data=f.read(), mime_type="image/jpeg")]
+        return parts
+
+    def _upload(self, path: str):
+        import time
+
+        f = self.client.files.upload(file=path)
+        deadline = time.monotonic() + self.upload_timeout
+        while getattr(f.state, "name", str(f.state)) == "PROCESSING":
+            if time.monotonic() > deadline:
+                raise VisionLLMError(f"upload of {os.path.basename(path)} did not finish processing")
+            time.sleep(2)
+            f = self.client.files.get(name=f.name)
+        if getattr(f.state, "name", str(f.state)) == "FAILED":
+            raise VisionLLMError(f"Gemini could not process {os.path.basename(path)}")
+        return f
+
+    def analyze_images(self, prompt, images, schema):
+        return self._generate(["Analyse these images.", *self._image_parts(images)], prompt, schema)
+
+    def analyze_videos(self, prompt, videos, images, schema):
+        uploaded = []
+        try:
+            parts: list = []
+            for label, path in videos:
+                f = self._upload(path)
+                uploaded.append(f)
+                parts += [label, f]
+            parts += self._image_parts(images)
+            return self._generate(parts, prompt, schema)
+        finally:
+            for f in uploaded:  # uploads are temporary; do not leave user footage on Google's side
+                try:
+                    self.client.files.delete(name=f.name)
+                except Exception:  # noqa: BLE001 - cleanup is best effort
+                    pass
+
+    def run_tools(self, system, user, tools, handler, max_steps=8):
+        # Not needed for the default (timeline) selector; DirectorSelector falls back to the heuristic.
+        raise VisionLLMError("tool calling is not implemented for the gemini vision provider")
+
+
 def build_llm(provider: str | None = None, model: str | None = None) -> VisionLLM:
-    provider = provider or os.environ.get("REEL_LLM_PROVIDER", "openai")
+    provider = provider or os.environ.get("REEL_LLM_PROVIDER", "gemini")
+    if provider == "gemini":
+        return GeminiVision(model=model)
     if provider == "openai":
         return OpenAIVision(model=model)
     raise ValueError(f"unknown vision provider '{provider}'")

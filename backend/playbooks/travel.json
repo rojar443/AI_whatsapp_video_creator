@@ -1,0 +1,30 @@
+{
+  "genre": "travel",
+  "hook": "Open with the single most striking motion shot or landmark reveal in the first 1-3 seconds, with a centered white sans-serif text overlay in the upper third (place name or short title).",
+  "structure": [
+    "hook shot with text overlay",
+    "3-5 highlight moments, mixing wide and close-up",
+    "scenic travel or transition sequence",
+    "calm closing shot"
+  ],
+  "pacing": {
+    "avg_clip_seconds": 1.5,
+    "cuts_per_10s": 6.5,
+    "pace_notes": "Fast, rhythmic, hard cuts. Allow the closing shot to run longer (2-3 seconds)."
+  },
+  "length_seconds": {"min": 15, "max": 25},
+  "visual_treatment": {
+    "grade": "Warm, natural, earthy color grade",
+    "transitions": "Hard cuts only",
+    "text_style": "Centered white sans-serif text overlay in the upper third"
+  },
+  "audio": {
+    "music_energy": "medium",
+    "narration": "optional: one short line over the opening and one over the closing"
+  },
+  "selection_rules": {
+    "prefer": ["motion", "scenery", "golden light", "mix of wide and close-up shots"],
+    "avoid": ["shaky clips", "dark clips", "near-duplicate clips", "any single clip longer than 3 seconds"]
+  },
+  "confidence": "Derived from 3 reels (2 full-length, 1 teaser). Length and narration were set manually. Tune after testing."
+}

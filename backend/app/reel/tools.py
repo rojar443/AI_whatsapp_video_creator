@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from app.reel.llm import ToolResult
 from app.reel.models import Asset, Brief, PlanItem, ReelPlan, Shot, ShotScore, to_dict
-from app.reel.playbooks import get_playbook
+from app.reel.playbooks import playbook_of, rules_for
 
 MIN_SHOT_SECONDS = 0.8
 
@@ -58,6 +58,7 @@ def validate_plan(session: Session, proposal: dict, selector: str) -> tuple[Reel
         return None, ["plan has no items"]
     seen: set[str] = set()
     items: list[PlanItem] = []
+    max_clip = rules_for(session.brief).max_clip_seconds
     for it in raw:
         sid = str(it.get("shot_id", ""))
         s = session.shot(sid)
@@ -71,8 +72,8 @@ def validate_plan(session: Session, proposal: dict, selector: str) -> tuple[Reel
             errors.append(f"{sid}: used twice")
             continue
         seen.add(sid)
-        want = float(it.get("seconds") or get_playbook(session.brief.genre)["shot_seconds"])
-        secs = round(max(MIN_SHOT_SECONDS, min(want, s.length)), 2)
+        want = float(it.get("seconds") or session.brief.shot_seconds)
+        secs = round(max(MIN_SHOT_SECONDS, min(want, s.length, max_clip)), 2)
         items.append(PlanItem(sid, secs, str(it.get("caption") or "")[:60]))
     if errors:
         return None, errors
@@ -129,7 +130,7 @@ class ToolBox:
             imgs = view_shots(s, [str(i) for i in args.get("ids", [])])
             return ToolResult(json.dumps({"returned": [label for label, _ in imgs]}), imgs)
         if name == "get_playbook":
-            return ToolResult(json.dumps(get_playbook(s.brief.genre)))
+            return ToolResult(json.dumps(playbook_of(s.brief)))
         if name == "submit_plan":
             plan, errors = validate_plan(s, args, self.selector)
             if errors:

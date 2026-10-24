@@ -13,10 +13,12 @@ import numpy as np
 
 from app.reel.llm import VisionLLM
 from app.reel.models import PlanItem, ReelPlan
-from app.reel.playbooks import get_playbook
-from app.reel.tools import TOOL_SPECS, Session, ToolBox, validate_plan
+from app.reel.playbooks import rules_for
+from app.reel.tools import TOOL_SPECS, Session, ToolBox
 
 log = logging.getLogger(__name__)
+
+PHOTO_MAX_SECONDS = 4.0
 
 
 class Selector(ABC):
@@ -24,6 +26,18 @@ class Selector(ABC):
 
     @abstractmethod
     def select(self, session: Session) -> ReelPlan: ...
+
+
+def fit_closing(item: PlanItem, asset, r, notes: list[str], start: float = 0.0) -> None:
+    """Hold the closing shot for the playbook's closing length when the footage allows it."""
+    if not r.closing_seconds:
+        return
+    lo, hi = r.closing_seconds
+    room = PHOTO_MAX_SECONDS if asset.kind == "photo" else asset.duration - start
+    secs = round(min(max(item.seconds, lo), hi, room), 2)
+    if secs != item.seconds:
+        notes.append(f"closing shot set to {secs:.1f}s (playbook {lo:g}-{hi:g}s)")
+        item.seconds = secs
 
 
 def _norm(a: np.ndarray) -> np.ndarray:
@@ -51,35 +65,60 @@ class HeuristicSelector(Selector):
             exposure = 1 - np.abs(_norm(m("brightness")) - 0.6)
             story = 0.45 * _norm(m("sharpness")) + 0.35 * _norm(np.minimum(m("motion"), 20)) + 0.2 * exposure
             hook = story + 0.2 * _norm(np.minimum(m("motion"), 20))
-        pb = get_playbook(session.brief.genre)
         target = session.brief.duration
-        n = int(max(2, min(len(cands), round(target / pb["shot_seconds"]))))
+        n = int(max(2, min(len(cands), round(target / session.brief.shot_seconds))))
         ranked = [cands[i] for i in np.argsort(-story) if story[i] > -50][:n] or cands[:n]
         opener = max(ranked, key=lambda s: hook[cands.index(s)])
         rest = [s for s in ranked if s is not opener]
-        closer = rest[0] if rest else None
+        # playbook structure ends on a calm shot: the least motion among the strongest remaining
+        motion = {s.id: session.scores[s.id].metrics.get("motion", 0) for s in rest}
+        closer = min(rest[: max(3, len(rest) // 2)], key=lambda s: motion[s.id]) if rest else None
+        rest = [s for s in rest if s is not closer]
         order_key = {a.id: k for k, a in enumerate(session.assets)}
-        middle = sorted((s for s in rest[1:]), key=lambda s: (order_key[s.asset_id], s.start))
+        middle = sorted(rest, key=lambda s: (order_key[s.asset_id], s.start))
         seq = [opener, *middle] + ([closer] if closer else [])
         # spread the target duration, then top up shots that have footage to spare
         per = target / len(seq)
-        secs = [min(per, s.length) for s in seq]
+        photo_cap = 1.5 * session.brief.shot_seconds if session.brief.pace == "fast" else per
+        secs = [min(per, s.length, photo_cap if s.kind == "photo" else per) for s in seq]
         short = target - sum(secs)
-        for i, s in enumerate(seq):
+        for i in sorted(range(len(seq)), key=lambda i: seq[i].kind == "photo"):  # videos first
             if short <= 0.05:
                 break
-            extra = min(short, s.length - secs[i])
+            extra = min(short, seq[i].length - secs[i])
             secs[i] += extra
             short -= extra
-        proposal = {"title": "", "items": [
-            {"shot_id": s.id, "seconds": round(t, 2), "caption": session.scores[s.id].caption}
-            for s, t in zip(seq, secs)]}
-        plan, errors = validate_plan(session, proposal, self.name)
-        if plan is None:  # only possible if footage is shorter than the target; accept what we have
-            log.info("heuristic plan adjusted: %s", errors)
-            items = [PlanItem(i["shot_id"], i["seconds"], i["caption"]) for i in proposal["items"]]
-            plan = ReelPlan("", items, session.brief.genre, self.name)
-            plan.notes.append(f"footage shorter than target: {plan.seconds:.1f}s of {target:.0f}s")
+        items = [PlanItem(s.id, round(t, 2), session.scores[s.id].caption) for s, t in zip(seq, secs)]
+        plan = self._split_for_pace(ReelPlan("", items, session.brief.genre, self.name), session)
+        r = rules_for(session.brief)
+        for it in plan.items[:-1]:  # playbook: no single clip longer than max_clip_seconds
+            it.seconds = round(min(it.seconds, r.max_clip_seconds), 2)
+        last = plan.items[-1]
+        fit_closing(last, next(a for a in session.assets if a.id == session.shot(last.shot_id).asset_id),
+                    r, plan.notes, start=last.start if last.start is not None else session.shot(last.shot_id).start)
+        if plan.seconds < 0.9 * target:
+            plan.notes.append(f"footage allows {plan.seconds:.1f}s of the {target:.0f}s target "
+                              f"within the playbook's {r.max_clip_seconds:g}s clip limit")
+        return plan
+
+    @staticmethod
+    def _split_for_pace(plan: ReelPlan, session: Session) -> ReelPlan:
+        """A long slot in a fast reel becomes several quick cuts spread across the same shot."""
+        cut = session.brief.shot_seconds
+        items: list[PlanItem] = []
+        for it in plan.items:
+            shot = session.shot(it.shot_id)
+            k = round(it.seconds / cut)
+            if shot.kind == "photo" or k < 2 or it.seconds < 1.6 * cut:
+                items.append(it)
+                continue
+            each = it.seconds / k
+            gap = (shot.length - it.seconds) / (k - 1) if k > 1 else 0  # spread cuts over the shot
+            for j in range(k):
+                start = shot.start + j * (each + gap)
+                items.append(PlanItem(it.shot_id, round(each, 2), it.caption if j == 0 else "",
+                                      shot.asset_id, round(start, 2)))
+        plan.items = items
         return plan
 
 

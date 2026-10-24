@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.reel.media import ffmpeg, probe
 from app.reel.models import ReelPlan, RenderResult
-from app.reel.playbooks import get_playbook
+from app.reel.playbooks import Rules, rules_for
 from app.reel.tools import Session
 
 FONTS = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
@@ -29,27 +29,31 @@ class FFmpegRenderer(Renderer):
         self.w, self.h, self.fps, self.max_mb = width, height, fps, max_mb
         self.font = next((f for f in FONTS if os.path.exists(f)), None)
 
-    def _caption_filter(self, text: str, workdir: Path, n: int) -> str | None:
+    TEXT_Y = {"upper_third": "h*0.16", "center": "(h-text_h)/2", "lower_third": "h*0.72"}
+
+    def _caption_filter(self, text: str, workdir: Path, n: int, rules: Rules) -> str | None:
         if not text or not self.font:
             return None
         txt = workdir / f"cap_{n:02d}.txt"
         txt.write_text(text, encoding="utf-8")  # textfile= avoids drawtext escaping problems
-        return (f"drawtext=fontfile={self.font}:textfile={txt}:fontcolor=white:fontsize=64:"
-                f"borderw=4:bordercolor=black@0.6:x=(w-text_w)/2:y=h*0.72")
+        y = self.TEXT_Y.get(rules.text_position, self.TEXT_Y["lower_third"])
+        return (f"drawtext=fontfile={self.font}:textfile={txt}:fontcolor={rules.text_color}:fontsize=72:"
+                f"borderw=4:bordercolor=black@0.55:x=(w-text_w)/2:y={y}")
 
     def render(self, plan: ReelPlan, session: Session, out: str) -> RenderResult:
         if not plan.items:
             raise ValueError("plan has no items")
         work = Path(session.workdir) / "render"
         work.mkdir(parents=True, exist_ok=True)
-        grade = get_playbook(plan.genre)["grade"]
+        rules = rules_for(session.brief)  # grade, transitions and text placement from the playbook
         assets = {a.id: a for a in session.assets}
         parts = []
         for n, item in enumerate(plan.items):
-            shot = session.shot(item.shot_id)
-            src = assets[shot.asset_id].path
+            shot = session.shot(item.shot_id) if item.shot_id else None
+            asset = assets[item.asset_id or shot.asset_id]
+            src = asset.path
             secs = item.seconds
-            if shot.kind == "photo":
+            if asset.kind == "photo":
                 frames = max(1, int(secs * self.fps))
                 # one input frame; zoompan expands it into `frames` output frames (slow push-in)
                 inp = ["-i", src, "-frames:v", str(frames)]
@@ -58,16 +62,24 @@ class FFmpegRenderer(Renderer):
                       f"zoompan=z='min(zoom+0.0012,1.15)':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':"
                       f"d={frames}:s={self.w}x{self.h}:fps={self.fps}"]
             else:
-                start = shot.start + max(0.0, (shot.length - secs) / 2)  # centre of the shot
+                if item.start is not None:  # exact cut chosen by the timeline selector
+                    start = item.start
+                else:  # centre of the sampled shot
+                    start = shot.start + max(0.0, (shot.length - secs) / 2)
                 inp = ["-ss", f"{start:.2f}", "-t", f"{secs:.2f}", "-i", src]
                 vf = [f"scale={self.w}:{self.h}:force_original_aspect_ratio=increase,"
                       f"crop={self.w}:{self.h},fps={self.fps}"]
-            vf.append(grade)
-            caption = plan.title if (n == 0 and plan.title) else item.caption
-            cap = self._caption_filter(caption, work, n)
+            vf.append(rules.grade_filter)
+            if n == 0:
+                caption = session.brief.title or item.caption or plan.title
+            else:
+                caption = item.caption if rules.text_on == "all" else ""
+            cap = None if rules.text_on == "none" else self._caption_filter(caption, work, n, rules)
             if cap:
                 vf.append(cap)
-            vf.append("fade=t=in:st=0:d=0.15,setsar=1,format=yuv420p")
+            if not rules.hard_cuts:
+                vf.append("fade=t=in:st=0:d=0.15")
+            vf.append("setsar=1,format=yuv420p")
             part = work / f"p{n:02d}.mp4"
             ffmpeg(*inp, "-vf", ",".join(vf), "-an", "-c:v", "libx264", "-preset", "veryfast",
                    "-crf", "20", str(part))

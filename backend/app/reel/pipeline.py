@@ -13,6 +13,7 @@ from app.reel.models import Brief, ReelPlan, RenderResult, ShotScore, to_dict
 from app.reel.render import FFmpegRenderer, Renderer
 from app.reel.sample import FFmpegSceneSampler, Sampler
 from app.reel.select import DirectorSelector, HeuristicSelector, Selector
+from app.reel.timeline import TimelineSelector
 from app.reel.tools import Session, session_dict
 
 log = logging.getLogger(__name__)
@@ -20,10 +21,10 @@ log = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "ingestor": "folder",
     "sampler": "ffmpeg_scene",
-    "analyzers": ["quality", "vision"],
-    "selector": "director",
+    "analyzers": ["quality"],
+    "selector": "timeline",  # model returns timestamped cuts; heuristic | director also available
     "renderer": "ffmpeg",
-    "llm": {"provider": "openai", "model": None},
+    "llm": {"provider": "gemini", "model": None},
 }
 
 
@@ -76,7 +77,7 @@ class Pipeline:
 
 def build_pipeline(config: dict | None = None, llm: VisionLLM | None = None) -> Pipeline:
     cfg = {**DEFAULT_CONFIG, **(config or {})}
-    needs_llm = "vision" in cfg["analyzers"] or cfg["selector"] == "director"
+    needs_llm = "vision" in cfg["analyzers"] or cfg["selector"] in ("director", "timeline")
     if needs_llm and llm is None:
         llm = build_llm(cfg["llm"].get("provider"), cfg["llm"].get("model"))
     analyzers: list[Analyzer] = []
@@ -87,7 +88,8 @@ def build_pipeline(config: dict | None = None, llm: VisionLLM | None = None) -> 
             analyzers.append(VisionAnalyzer(llm))
         else:
             raise ValueError(f"unknown analyzer '{name}'")
-    selectors = {"heuristic": lambda: HeuristicSelector(), "director": lambda: DirectorSelector(llm)}
+    selectors = {"heuristic": lambda: HeuristicSelector(), "director": lambda: DirectorSelector(llm),
+                 "timeline": lambda: TimelineSelector(llm)}
     if cfg["selector"] not in selectors:
         raise ValueError(f"unknown selector '{cfg['selector']}'")
     if cfg["ingestor"] != "folder" or cfg["sampler"] != "ffmpeg_scene" or cfg["renderer"] != "ffmpeg":

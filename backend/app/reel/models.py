@@ -1,11 +1,15 @@
 """Data objects passed between pipeline stages. All are JSON-serialisable via to_dict()."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 Kind = Literal["video", "photo"]
 Role = Literal["hook", "build", "payoff", "skip"]
+
+
+Pace = Literal["slow", "normal", "fast"]
 
 
 @dataclass
@@ -15,6 +19,37 @@ class Brief:
     genre: str = "travel"
     duration: float = 30.0
     music_path: str | None = None
+    pace: Pace = "normal"
+    style: str = "cinematic"
+    playbook: dict | None = None  # user-supplied playbook for this run; None = look up by genre
+    title: str = ""  # user-supplied hook text (e.g. the place name); overrides the model's title
+
+    @property
+    def shot_seconds(self) -> float:
+        """Average cut length: the playbook's pacing, nudged by the requested pace."""
+        from app.reel.playbooks import cut_seconds
+
+        return cut_seconds(self)
+
+
+_PACE_WORDS = {"fast": ("fast", "quick", "energetic", "upbeat", "snappy", "rapid", "dynamic"),
+               "slow": ("slow", "calm", "relaxed", "gentle", "chill", "peaceful")}
+_STYLES = ("cinematic", "natural", "vibrant", "minimalist", "documentary")
+
+
+def brief_from_prompt(prompt: str, duration: float = 30.0, genre: str | None = None,
+                      music_path: str | None = None) -> Brief:
+    """Read pace, style and genre from the user's request with simple keyword rules."""
+    low = prompt.lower()
+    pace: Pace = next((p for p, words in _PACE_WORDS.items() if any(w in low for w in words)), "normal")
+    style = next((s for s in _STYLES if s in low), "cinematic")
+    if genre is None:
+        from app.reel.playbooks import available
+
+        named = next((g for g in available() if re.search(rf"\b{re.escape(g)}\b", low)), None)
+        daily = any(w in low for w in ("day in", "my day", "routine"))
+        genre = named or ("daily" if daily else "travel")
+    return Brief(prompt, genre, duration, music_path, pace, style)
 
 
 @dataclass
@@ -58,9 +93,13 @@ class ShotScore:
 
 @dataclass
 class PlanItem:
-    shot_id: str
+    """One cut. Either a sampled shot (shot_id) or an exact file range (asset_id + start)."""
+    shot_id: str | None
     seconds: float
     caption: str = ""
+    asset_id: str | None = None
+    start: float | None = None  # seconds into the asset; None = centre of the shot
+    reason: str = ""
 
 
 @dataclass
