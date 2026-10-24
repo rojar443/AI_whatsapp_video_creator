@@ -23,8 +23,9 @@ async def lifespan(_: FastAPI):
     if s.app_env == "production":
         if s.secret_key.startswith("dev-"):
             raise RuntimeError("Set SECRET_KEY in production")
-        if s.whatsapp_app_secret == "dev-app-secret" or s.whatsapp_verify_token == "dev-verify-token":
-            raise RuntimeError("Set WHATSAPP_APP_SECRET and WHATSAPP_VERIFY_TOKEN in production")
+        uses_whatsapp = s.whatsapp_enabled or s.messaging_provider == "meta"
+        if uses_whatsapp and (s.whatsapp_app_secret == "dev-app-secret" or s.whatsapp_verify_token == "dev-verify-token"):
+            raise RuntimeError("Set WHATSAPP_APP_SECRET and WHATSAPP_VERIFY_TOKEN when WhatsApp is enabled")
     try:
         from app import playbooks
 

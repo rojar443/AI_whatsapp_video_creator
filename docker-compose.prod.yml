@@ -1,0 +1,89 @@
+# Production stack for one Linux server. Usage and setup: docs/DEPLOY.md
+#   cp .env.production.example .env  → fill in  →  docker compose -f docker-compose.prod.yml up -d --build
+name: reelchat
+
+x-backend: &backend
+  build: ./backend
+  image: reelchat-backend:prod
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://reelchat:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/reelchat
+    REDIS_URL: redis://redis:6379/0
+    TASK_BACKEND: celery
+    APP_ENV: production
+    STORAGE_LOCAL_DIR: /app/var/storage
+    WORK_DIR: /app/var/work
+    PLAYBOOK_DIR: /app/playbooks
+    MUSIC_LIBRARY_DIR: /app/music
+  volumes:
+    - media:/app/var
+    - ./backend/music:/app/music:ro
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: reelchat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: reelchat
+    volumes: [pgdata:/var/lib/postgresql/data]   # not published: reachable only by the other containers
+    restart: unless-stopped
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U reelchat"], interval: 5s, timeout: 3s, retries: 20}
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    restart: unless-stopped
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20}
+
+  api:                       # internal only: the website proxies /api to it
+    <<: *backend
+    healthcheck: {test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"], interval: 15s, timeout: 5s, retries: 10}
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "app.jobs.celery_app", "worker", "-B", "-Q", "default,media",
+              "--concurrency", "2", "--loglevel", "INFO", "-s", "/app/var/celerybeat-schedule"]
+    cap_drop: [ALL]
+    mem_limit: 3g
+    depends_on:
+      api: {condition: service_healthy}   # the api applies database migrations first
+
+  telegram:                  # outgoing long polling only: no public IP or open port needed
+    <<: *backend
+    command: ["python", "-m", "app.telegram_poller"]
+    cap_drop: [ALL]
+    depends_on:
+      api: {condition: service_healthy}
+
+  web:
+    build: ./frontend
+    image: reelchat-web:prod
+    environment:
+      BACKEND_URL: http://api:8000
+    restart: unless-stopped
+    depends_on: [api]
+
+  caddy:                     # HTTPS (automatic certificates) in front of the website
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+      SITE_IP: ${SITE_IP:?set SITE_IP in .env}
+    ports: ["80:80", "443:443"]   # 80 = certificate checks and redirect to https
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    restart: unless-stopped
+    depends_on: [web]
+
+volumes:
+  pgdata:
+  redisdata:
+  media:
+  caddydata:

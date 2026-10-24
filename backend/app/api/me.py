@@ -22,8 +22,9 @@ router = APIRouter(prefix="/api/me", tags=["account"])
 
 
 @router.get("")
-def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return user_out(db, user)
+def me(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    # The CSRF token is returned to the logged-in user too, as a fallback when the cookie can't be read.
+    return {**user_out(db, user), "csrf_token": request.state.csrf}
 
 
 @router.get("/usage")
