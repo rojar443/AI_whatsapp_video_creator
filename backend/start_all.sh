@@ -11,6 +11,9 @@ if [ "${TASK_BACKEND:-celery}" = "celery" ] && [ -z "${REDIS_URL:-}" ]; then mis
 if [ "${APP_ENV:-}" = "production" ] && [ -z "${SECRET_KEY:-}" ]; then missing="$missing SECRET_KEY"; fi
 if [ -n "$missing" ]; then
   echo "ERROR: missing or wrong Railway variables on this service:$missing" >&2
+  # Show only the first characters (never the password) so an unresolved ${{...}} reference or a wrong scheme is visible.
+  echo "  DATABASE_URL begins with: '${DATABASE_URL:0:12}'   REDIS_URL begins with: '${REDIS_URL:0:8}'" >&2
+  echo "  (empty = the variable is not on THIS service; '\${{' = the reference name does not match a service)" >&2
   echo "See docs/RAILWAY.md, section 2." >&2
   exit 1
 fi
