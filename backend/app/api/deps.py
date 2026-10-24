@@ -46,6 +46,7 @@ def current_session(request: Request, db: Session = Depends(get_db)) -> UserSess
     if user is None or user.status != "active":
         raise HTTPException(403, "account disabled")
     request.state.user = user
+    request.state.csrf = sess.csrf_token
     return sess
 
 
