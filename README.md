@@ -29,9 +29,54 @@ cp .env.example .env
 sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=rules/; s/^TTS_PROVIDER=.*/TTS_PROVIDER=mock/; s/^TRANSCRIPTION_PROVIDER=.*/TRANSCRIPTION_PROVIDER=mock/' .env
 docker compose up --build -d
 ```
-Open http://localhost:3100/dev/whatsapp → 📎 → **Send sample footage** → *"That's all. Make it a cinematic
-travel reel with a calm voiceover."* → **✅ Proceed**. For the real thing, follow
+
+1. Open http://localhost:3100/register, create an account (dev mode shows the email-verification link).
+2. Dashboard → **Get link code**.
+3. Open **WhatsApp simulator** (top nav), send `LINK <code>`.
+4. Send *"Create a motivational Reel about fitness"*, answer the question, tap **✅ Generate**.
+5. Watch the progress messages; the (watermarked mock) video arrives in the chat and on the dashboard.
+6. Send *"Make it more cinematic and use a faster pace"* → confirm → revision 2.
+
+Admin: set `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `.env`, log in, open **Admin**.
+
+For a no-account demo, open http://localhost:3100/dev/whatsapp → 📎 → **Send sample footage** → *"That's all. Make it a cinematic
+travel reel with a calm voiceover."* → **✅ Proceed**. For real WhatsApp, follow
 [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) and set the Gemini / ElevenLabs keys.
+
+## AgenticOrg message interpretation
+
+To interpret incoming text and voice transcripts using an existing AgenticOrg agent,
+set these values in `.env`:
+
+```dotenv
+AGENT_PROVIDER=agenticorg
+AGENTICORG_API_KEY=your-key
+AGENTICORG_AGENT_NAME=your-agent-uuid
+AGENTICORG_BASE_URL=https://agenticorg.hackathon.pinelabs.com
+```
+
+`AGENTICORG_COMPANY_ID` is required for agent types; it is optional for agent UUIDs.
+Optionally set `AGENTICORG_BASE_URL` for your deployment and `AGENTICORG_ACTION`
+(default `process`). Requests use `AGENT_TIMEOUT_SECONDS` (default 30).
+The Docker build includes the SDK; rebuild with `docker compose up --build`.
+For a local backend, install with `pip install -e ".[agenticorg,dev]"` from `backend/`.
+If Admin has a saved agent override, select `agenticorg` there or reset it to environment config.
+
+The agent receives the user's text as `inputs.task`, with conversation details in
+the SDK's separate `context` argument, and must return a
+`MessageAnalysis` JSON object in `result.output`. That interpretation passes directly
+to requirement collection and validation. Video generation still requires user confirmation.
+Script writing uses the existing rules implementation. Failed calls or invalid JSON use
+the existing rules fallback.
+
+See [the input/output contract and agent configuration guidance](docs/AGENTICORG.md).
+
+## Tests
+
+```bash
+docker compose run --rm --no-deps api pytest            # full suite incl. FFmpeg rendering (SQLite)
+cd backend && uv venv && uv pip install -e ".[all,dev]" && .venv/bin/pytest   # local; FFmpeg tests skip if ffmpeg is missing
+```
 
 ## Stack
 FastAPI · SQLAlchemy/Alembic · PostgreSQL · Redis + Celery · FFmpeg · Next.js 15 · Docker Compose ·

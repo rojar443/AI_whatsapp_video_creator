@@ -21,17 +21,34 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3100"
     cookie_secure: bool = False
 
-    # --- AI provider (conversation, vision scoring, script) ---
-    # gemini | rules | openai | openai_compatible | anthropic
-    ai_provider: str = "gemini"
+    # --- Bootstrap admin (created on startup if both set) ---
+    admin_email: str | None = None
+    admin_password: str | None = None
+
+    # --- AI provider ---
+    # gemini | rules | openai | openai_compatible | anthropic | agenticorg
+    ai_provider: str = "rules"
     ai_model: str = "gemini-flash-latest"
-    ai_model_vision: str | None = None  # defaults to ai_model
+    ai_model_vision: str | None = None
     ai_model_script: str | None = None
     ai_timeout_seconds: float = 60.0
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     anthropic_api_key: str | None = None
+
+    # Optional AgenticOrg provider compatibility settings
+    agent_provider: str = "rules"
+    agent_model: str | None = None  # default model for all tasks
+    agent_model_analysis: str | None = None  # intent + requirement extraction
+    agent_model_response: str | None = None  # phrasing replies
+    agent_model_script: str | None = None  # script writing
+    agenticorg_api_key: str | None = None
+    agenticorg_agent_name: str | None = None  # existing agent UUID or type
+    agenticorg_base_url: str | None = "https://agenticorg.hackathon.pinelabs.com"
+    agenticorg_company_id: str | None = None  # required for agent-type runs
+    agenticorg_action: str = "process"
+    agent_timeout_seconds: float = 30.0
 
     # --- Speech ---
     transcription_provider: str = "gemini"  # gemini | mock

@@ -13,19 +13,28 @@ from app.agents.base import AgentProvider
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
-AGENT_PROVIDERS = ["gemini", "rules", "openai", "openai_compatible", "anthropic"]
+
+AGENT_PROVIDERS = ["gemini", "rules", "openai", "openai_compatible", "anthropic", "agenticorg"]
 _overrides: dict[str, Any] = {}  # tests inject fakes: "agent", "messaging", "tts", "transcriber"
 
 
 def build_agent(name: str | None = None) -> AgentProvider:
     s = get_settings()
-    name = name or s.ai_provider
+    name = name or ("agenticorg" if s.agent_provider == "agenticorg" else s.ai_provider)
     models = {"default": s.ai_model, "analysis": s.ai_model, "vision": s.ai_model_vision or s.ai_model,
               "script": s.ai_model_script or s.ai_model}
     if name == "rules":
         from app.agents.rules import RulesAgentProvider
 
-        return RulesAgentProvider()
+        return RulesAgentProvider(models)
+    if name == "agenticorg":
+        from app.agents.agenticorg import AgenticOrgAgentProvider
+
+        return AgenticOrgAgentProvider(
+            models, api_key=s.agenticorg_api_key, agent_name=s.agenticorg_agent_name,
+            base_url=s.agenticorg_base_url, company_id=s.agenticorg_company_id,
+            action=s.agenticorg_action, timeout=s.agent_timeout_seconds,
+        )
     from app.agents import llm
 
     if name == "gemini":
