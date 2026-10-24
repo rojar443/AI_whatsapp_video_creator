@@ -250,3 +250,32 @@ def test_admin_channel_filter(client, db, tg, monkeypatch):  # noqa: F811
     assert client.get("/api/admin/users", params={"channel": "telegram"}).json()["total"] == 2  # bot user + admin
     assert client.get("/api/admin/users", params={"channel": "whatsapp"}).json()["total"] == 0
     assert client.get("/api/admin/users", params={"channel": "fax"}).status_code == 422
+
+
+# --------------------------------------------------------------------------- token usage + talked-to-bot filter
+def test_admin_shows_token_usage_and_talked_filter(client, db, tg, monkeypatch):  # noqa: F811
+    from app.models import UsageRecord
+
+    feed(db, tg, msg(1, text="hello"))  # CHAT talks to the bot
+    talker = db.query(User).one()
+    quiet = User(name="Quiet", email="q@example.com", credits_balance=0)  # registered, never messaged
+    db.add(quiet)
+    db.flush()
+    db.add_all([
+        UsageRecord(user_id=talker.id, kind="llm", provider="gemini", quantity=1200, unit="tokens", estimated_cost_usd=0.0021),
+        UsageRecord(user_id=talker.id, kind="llm", provider="gemini", quantity=300, unit="tokens", estimated_cost_usd=0.0007),
+        UsageRecord(user_id=talker.id, kind="transcription", provider="mock", quantity=5, unit="seconds", estimated_cost_usd=0.01),
+        UsageRecord(user_id=quiet.id, kind="llm", provider="gemini", quantity=50, unit="tokens", estimated_cost_usd=0.0001),
+    ])
+    db.commit()
+    admin = login_as_admin(client, db, tg, monkeypatch)  # pressing Start in the bot is also talking to it
+    items = client.get("/api/admin/users").json()["items"]
+    row = next(i for i in items if i["id"] == talker.id)
+    assert row["tokens"] == 1500 and abs(row["cost_usd"] - 0.0128) < 1e-9  # only llm rows count as tokens
+    assert next(i for i in items if i["id"] == quiet.id)["tokens"] == 50
+    only = client.get("/api/admin/users", params={"talked": "true"}).json()
+    assert {i["id"] for i in only["items"]} == {talker.id, admin["id"]} and only["total"] == 2  # not the quiet one
+    s = client.get("/api/admin/summary").json()
+    assert s["tokens"] == 1550 and s["talked_to_bot"] == 2 and s["users"] == 3
+    assert {p["provider"] for p in s["by_provider"]} == {"gemini", "mock"}
+    assert fresh_client().get("/api/admin/summary").status_code == 401
