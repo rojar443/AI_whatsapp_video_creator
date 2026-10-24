@@ -14,11 +14,13 @@ SAMPLES = [
     ("01_sunrise.mp4", "mandelbrot=s=1280x720:maxiter=60,hue=h=30:s=1.3", 6, "SAMPLE sunrise"),
     ("02_city_walk.mp4", "testsrc2=s=1280x720:r=30", 6, "SAMPLE city"),
     ("03_too_dark.mp4", "testsrc2=s=1280x720:r=30,eq=brightness=-0.85", 5, "SAMPLE dark"),
-    ("04_waves.mp4", "life=s=640x360:mold=10:r=30:ratio=0.1:death_color=#0a3d62:life_color=#82ccdd,scale=1280:720", 7,
-     "SAMPLE waves"),
-    ("05_waves_again.mp4", "life=s=640x360:mold=10:r=30:ratio=0.1:death_color=#0a3d62:life_color=#82ccdd,scale=1280:720",
+    ("04_waves.mp4", "life=s=640x360:mold=10:r=30:ratio=0.1:seed=42:death_color=#3c8dbc:life_color=#f0f8ff:mold_color=#5aa9d6,scale=1280:720",
      7, "SAMPLE waves"),
-    ("06_market.mp4", "cellauto=s=1280x720:rule=110:r=30,hue=h=200:s=2", 6, "SAMPLE market"),
+    ("05_waves_again.mp4",  # same seed → near-duplicate of 04, for the quality filter
+     "life=s=640x360:mold=10:r=30:ratio=0.1:seed=42:death_color=#3c8dbc:life_color=#f0f8ff:mold_color=#5aa9d6,scale=1280:720",
+     7, "SAMPLE waves"),
+    ("06_market.mp4", "mandelbrot=s=1280x720:maxiter=80:start_x=-0.7436:start_y=0.1318:start_scale=0.05,hue=h=200:s=1.5",
+     6, "SAMPLE market"),
 ]
 
 

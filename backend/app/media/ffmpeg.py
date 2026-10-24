@@ -23,8 +23,9 @@ class FFmpegError(Exception):
 
 
 def _limits() -> None:  # runs in the child process
+    # CPU time and output size are capped here; memory is capped per container (docker-compose mem_limit),
+    # because an address-space rlimit breaks FFmpeg's thread pools (virtual stacks), not real memory use.
     resource.setrlimit(resource.RLIMIT_CPU, (900, 900))
-    resource.setrlimit(resource.RLIMIT_AS, (6 * 1024**3, 6 * 1024**3))
     resource.setrlimit(resource.RLIMIT_FSIZE, (2 * 1024**3, 2 * 1024**3))
 
 
@@ -42,7 +43,8 @@ def run(args: list[str], cwd: str | None = None, timeout: int = 900) -> None:
     cmd = [s.ffmpeg_path, "-y", "-hide_banner", "-nostdin", "-loglevel", "error", "-threads", str(s.ffmpeg_threads), *args]
     r = _exec(cmd, cwd, timeout)
     if r.returncode != 0:
-        raise FFmpegError(r.stderr.decode(errors="ignore")[-800:])
+        graph = next((args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-filter_complex", "-vf", "-af")), "")
+        raise FFmpegError(f"{r.stderr.decode(errors='ignore')[-800:]} | filters: {graph[:600]}")
 
 
 def run_capture(args: list[str], timeout: int = 300) -> bytes:
@@ -86,15 +88,20 @@ def gray_frames(path: str, times: list[float], size: int = 32) -> list[bytes]:
     """Tiny grayscale frames (size×size bytes each) at the given timestamps."""
     out = []
     for t in times:
-        raw = run_capture([*SAFE_IN, "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
+        raw = run_capture([*SAFE_IN, *_seek(t), "-i", path, "-frames:v", "1",
                            "-vf", f"scale={size}:{size}:flags=area,format=gray", "-f", "rawvideo", "-"])
         if len(raw) >= size * size:
             out.append(raw[: size * size])
     return out
 
 
+def _seek(t: float) -> list[str]:
+    # "-ss 0" before a still image yields no frame, so only seek when needed
+    return ["-ss", f"{t:.3f}"] if t > 0.001 else []
+
+
 def jpeg_frame(path: str, t: float, out: str, width: int = 384) -> str:
-    run([*SAFE_IN, "-ss", f"{max(0.0, t):.3f}", "-i", path, "-frames:v", "1",
+    run([*SAFE_IN, *_seek(t), "-i", path, "-frames:v", "1",
          "-vf", f"scale={width}:-2", "-q:v", "5", out])
     return out
 

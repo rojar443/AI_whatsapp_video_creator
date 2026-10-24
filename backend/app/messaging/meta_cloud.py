@@ -45,12 +45,15 @@ class MetaCloudProvider(MessagingProvider):
         return self._post_message({"to": to, "type": "text", "text": {"body": text[:4096], "preview_url": True}})
 
     def send_buttons(self, to: str, text: str, buttons: list[tuple[str, str]]) -> str:
+        if len(text) > 1024:  # interactive body limit: send the details first, then a short prompt
+            self.send_text(to, text)
+            text = "Shall I proceed?"
         return self._post_message({
             "to": to,
             "type": "interactive",
             "interactive": {
                 "type": "button",
-                "body": {"text": text[:1024]},
+                "body": {"text": text},
                 "action": {"buttons": [
                     {"type": "reply", "reply": {"id": bid[:256], "title": title[:20]}}
                     for bid, title in buttons[:3]

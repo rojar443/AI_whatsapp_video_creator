@@ -16,9 +16,8 @@ WORKDIR /app
 # Extra provider SDKs: e.g. --build-arg EXTRAS=dev,s3,anthropic,openai
 ARG EXTRAS=dev
 COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py \
-    && uv pip install --system ".[${EXTRAS}]" \
-    && rm -rf app
+# dependencies only — the app itself runs from /app (no stub package in site-packages)
+RUN uv pip install --system -r pyproject.toml $(echo ",${EXTRAS}" | sed 's/,\([a-z0-9]\)/ --extra \1/g')
 COPY . .
 RUN useradd --create-home --uid 1000 reelchat && mkdir -p /app/var && chown -R reelchat /app/var
 USER reelchat

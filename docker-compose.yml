@@ -47,6 +47,7 @@ services:
     command: ["celery", "-A", "app.jobs.celery_app", "worker", "-B", "-Q", "default,media",
               "--concurrency", "2", "--loglevel", "INFO", "-s", "/app/var/celerybeat-schedule"]
     cap_drop: [ALL]
+    mem_limit: 3g   # caps FFmpeg memory use; raise for high-quality renders of many clips
     depends_on:
       api: {condition: service_healthy}  # api runs the migrations first
 

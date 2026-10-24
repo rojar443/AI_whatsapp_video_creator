@@ -281,3 +281,39 @@ def test_gemini_adapter_parses_json_and_vision():
     scores = g.score_moments(segs, {"a0:0": [b"\xff\xd8jpeg"]}, ctx())
     assert scores[0].score == 8.5 and scores[0].focus_x == 0.3
     assert any(getattr(p, "inline_data", None) for p in calls[1][1])  # image part was sent
+
+
+def test_meta_provider_payloads_and_long_plan_split():
+    from app.messaging.meta_cloud import MetaCloudProvider
+
+    sent = []
+
+    def handler(request: httpx.Request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"messages": [{"id": f"wamid.{len(sent)}"}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    meta = MetaCloudProvider("token", "123", client=client)
+    meta.send_buttons("15550001", "x" * 1500, [("confirm:p:n", "✅ Proceed"), ("cancel:p", "✖ Cancel")])
+    assert sent[0]["type"] == "text" and len(sent[0]["text"]["body"]) == 1500
+    assert sent[1]["type"] == "interactive" and sent[1]["interactive"]["body"]["text"] == "Shall I proceed?"
+    assert sent[1]["interactive"]["action"]["buttons"][0]["reply"] == {"id": "confirm:p:n", "title": "✅ Proceed"}
+    meta.send_template("15550001", "hello_world", "en_US", [])
+    assert sent[2]["template"] == {"name": "hello_world", "language": {"code": "en_US"}, "components": []}
+
+
+def test_meta_provider_error_classification():
+    from app.messaging.base import SendError
+    from app.messaging.meta_cloud import MetaCloudProvider
+
+    def handler(request):
+        return httpx.Response(400, json={"error": {"code": 131030, "message": "Recipient not in allowed list"}})
+
+    meta = MetaCloudProvider("t", "1", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(SendError) as e:
+        meta.send_text("1555", "hi")
+    assert not e.value.retryable and "131030" in str(e.value)
+    meta = MetaCloudProvider("t", "1", client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(503))))
+    with pytest.raises(SendError) as e:
+        meta.send_text("1555", "hi")
+    assert e.value.retryable
