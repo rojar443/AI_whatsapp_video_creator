@@ -36,7 +36,15 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
   python -m app.telegram_poller &   # exactly one poller per bot token, so never scale this service past 1 replica
 fi
 
-uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers &
+# One-service mode (the root Dockerfile bundles the website): Next.js takes the public $PORT and proxies /api/* to the
+# API on 127.0.0.1:8000. Without the bundled website, the API itself listens on $PORT.
+API_PORT="${PORT:-8000}"
+if [ -f /app/web/server.js ]; then
+  API_PORT=8000
+  (cd /app/web && PORT="${PORT:-3100}" HOSTNAME=0.0.0.0 exec node server.js) &
+fi
+
+uvicorn app.main:app --host 0.0.0.0 --port "$API_PORT" --proxy-headers &
 
 # If any process exits, stop the container so Railway restarts all of them together.
 wait -n

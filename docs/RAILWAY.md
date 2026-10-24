@@ -10,7 +10,10 @@ Browser  ──▶ web (public domain) ──/api/*──▶ backend (private ne
 
 Only `web` gets a public domain; `backend` stays private. The browser talks to `web`, which proxies `/api/*`.
 
-> **Fastest path:** copy-paste files for both services are in `docs/railway/backend.env` and `docs/railway/web.env`.
+> **Fastest path (one service, one URL):** the repo-root `Dockerfile` builds the website + API + worker + bot into a
+> single image. Create one service from your fork's `public` branch (Root Directory empty), add Postgres and a volume at
+> `/app/var`, paste `docs/railway/app.env`, and generate a domain. That domain shows the UI. The rest of this guide
+> (separate `backend` and `web` services, with `docs/railway/backend.env` and `web.env`) is the split setup.
 
 ## 0. Before you start
 * Push this branch to GitHub (Railway deploys from GitHub). Use `main`, or the `public` branch if you want a separate deploy branch.
