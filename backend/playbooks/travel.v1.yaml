@@ -1,0 +1,40 @@
+# Genre playbook — reviewed data, read-only to the agent. Changes go through code review.
+# v1 = hypotheses from the spec; refine after the reference-reel research (docs/PLAYBOOK_RESEARCH.md).
+genre: travel
+version: "2026.10-v1"
+goal: Evoke the place and the feeling of being there.
+hook:
+  description: Striking visual or landmark reveal in the first 1-3 seconds.
+  max_seconds: 3
+  prefer_tags: [landscape, landmark, wide, golden_light, water, motion]
+structure:
+  beats:
+    - {role: hook, share: 0.12, note: "best scenic or reveal shot"}
+    - {role: build, share: 0.70, note: "arrival then highlights, wide-to-close variety"}
+    - {role: payoff, share: 0.18, note: "memorable closing shot, sunset or wide view"}
+  pace_change: "slightly faster cuts in the middle, slower payoff"
+  order: chronological_after_hook
+pacing:
+  avg_clip_seconds: 2.6
+  min_clip_seconds: 1.2
+  max_clip_seconds: 4.5
+  cuts_per_10s: 4
+length:
+  instagram_reel: [15, 45]
+  youtube_short: [20, 60]
+  vertical: [15, 60]
+visual_treatment:
+  grade: cinematic
+  transition: fade
+  transition_seconds: 0.35
+  title_style: centered_upper
+  caption_position: lower_third
+audio:
+  music_energy: medium
+  music_moods: [calm, inspiring, uplifting]
+  narration: optional
+  original_audio_level: 0.15
+  sound_effects: none
+selection_rules:
+  prefer: [scenery, motion, golden light, wide-to-close variety, people enjoying the place, local food]
+  avoid: [blurry or dark shots, long static shots, screens, repetitive angles, shaky walking footage]

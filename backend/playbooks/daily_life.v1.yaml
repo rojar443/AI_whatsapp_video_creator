@@ -1,0 +1,38 @@
+genre: daily_life
+version: "2026.10-v1"
+goal: Feel relatable and personal.
+hook:
+  description: A relatable moment or a curiosity line in the first 1-3 seconds.
+  max_seconds: 3
+  prefer_tags: [face, action, food, surprising, close_up]
+structure:
+  beats:
+    - {role: hook, share: 0.12, note: "relatable or curious moment"}
+    - {role: build, share: 0.73, note: "a day in my life or a small story, in time order"}
+    - {role: payoff, share: 0.15, note: "small resolution, smile, end-of-day shot"}
+  pace_change: "steady, natural rhythm"
+  order: chronological_after_hook
+pacing:
+  avg_clip_seconds: 3.2
+  min_clip_seconds: 1.5
+  max_clip_seconds: 5.0
+  cuts_per_10s: 3
+length:
+  instagram_reel: [15, 40]
+  youtube_short: [20, 60]
+  vertical: [15, 60]
+visual_treatment:
+  grade: natural
+  transition: cut
+  transition_seconds: 0.0
+  title_style: casual_upper
+  caption_position: lower_third
+audio:
+  music_energy: low
+  music_moods: [calm, warm, playful]
+  narration: recommended
+  original_audio_level: 0.35
+  sound_effects: none
+selection_rules:
+  prefer: [faces, activity, food, transitions between moments, hands doing things, natural light]
+  avoid: [very dark indoor shots, heavy shake, near-duplicates, empty rooms, screens]

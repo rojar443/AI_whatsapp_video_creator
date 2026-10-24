@@ -1,18 +1,22 @@
 import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque, Plus_Jakarta_Sans } from "next/font/google";
 import Link from "next/link";
 import Nav from "@/components/Nav";
 import "./globals.css";
 
+const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["700", "800"], variable: "--font-bricolage" });
+const body = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta" });
+
 export const metadata: Metadata = {
   title: "ReelChat",
-  description: "Create Instagram Reels and YouTube Shorts by chatting on WhatsApp.",
+  description: "Turn your own clips into Instagram Reels and YouTube Shorts by chatting on Telegram.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
         <Nav />
         <main>

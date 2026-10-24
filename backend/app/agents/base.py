@@ -1,81 +1,61 @@
 """Provider-independent agent interface.
 
-The agent *proposes*; the conversation state machine *decides*. Agent outputs are parsed
-into these types and every field value is re-validated by app.conversation.requirements
-before use. No agent method can start a generation job or touch the database.
+The agent proposes; the conversation state machine decides. Outputs are parsed into these
+types and re-validated against app.conversation.preferences before use. No agent method
+can start a job, touch the database, run commands or read arbitrary files.
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.conversation import requirements as req
+from app.conversation import preferences as prefs_mod
+from app.pipeline.contracts import EditContext, PlanItem, ScriptOutput, Segment, SegmentScore
 
-Intent = Literal[
-    "create_video",  # wants a new video
-    "provide_info",  # answering a question / adding preferences
-    "confirm",  # approves the summary (only honoured with an explicit yes/button)
-    "modify",  # change a previous requirement or a finished video
-    "cancel",
-    "status",
-    "help",
-    "greeting",
-    "new_project",
-    "retry",
-    "resend_link",
+INTENTS = [
+    "create_reel",  # wants a reel / describes one
+    "done_uploading",  # "that's all", "done"
+    "provide_info",  # answers a question / adds preferences
+    "confirm",  # approves the plan (only honoured with an explicit yes/button)
+    "modify",  # change preferences or the delivered draft
+    "approve",  # happy with the delivered reel
+    "cancel", "status", "help", "greeting", "new_project", "retry", "resend_link", "register",
+    "off_topic",  # general chat — declined (Meta policy: no general-purpose assistant)
     "other",
 ]
-INTENTS: list[str] = list(Intent.__args__)  # type: ignore[attr-defined]
-
-TASKS = ("analysis", "response", "script")
 
 
 @dataclass
 class AgentContext:
-    state: str  # project status, or "none"
-    pending_group: str | None = None  # question group we just asked
+    state: str  # project status or "none"
+    pending: str | None = None  # what we just asked
     prefs: dict[str, Any] = field(default_factory=dict)
-    recent: list[tuple[str, str]] = field(default_factory=list)  # (role, text), oldest first
+    media_summary: str = ""  # "4 clips, 2 photos"
+    recent: list[tuple[str, str]] = field(default_factory=list)
 
 
 class MessageAnalysis(BaseModel):
     intent: str = "other"
     confidence: float = Field(default=0.5, ge=0, le=1)
-    fields: dict[str, Any] = Field(default_factory=dict)  # unvalidated proposals
-    unsupported: list[str] = Field(default_factory=list)  # requests we can't honour
-    is_revision: bool = False
+    fields: dict[str, Any] = Field(default_factory=dict)
+    unsupported: list[str] = Field(default_factory=list)
+    done: bool = False  # user signalled the upload batch is complete ("that's all")
 
     def sanitized(self) -> MessageAnalysis:
-        intent = self.intent if self.intent in INTENTS else "other"
         fields = {}
         for k, v in self.fields.items():
-            if k in req.ALL_FIELDS:
-                cv = req.coerce_field(k, v)
+            if k in prefs_mod.ALL_FIELDS:
+                cv = prefs_mod.coerce_field(k, v)
                 if cv is not None:
                     fields[k] = cv
-        unsupported = [req.clean_text(u, 160) for u in self.unsupported[:5]]
-        return MessageAnalysis(
-            intent=intent,
-            confidence=self.confidence,
-            fields=fields,
-            unsupported=[u for u in unsupported if u],
-            is_revision=self.is_revision,
-        )
-
-
-class Scene(BaseModel):
-    narration: str
-    on_screen_text: str
-    visual_query: str  # English keywords for stock/image search
-
-
-class Script(BaseModel):
-    title: str
-    scenes: list[Scene]
-    hashtags: list[str] = Field(default_factory=list)
+        unsupported = [u for u in (prefs_mod.clean_text(x, 160) for x in self.unsupported[:5]) if u]
+        return MessageAnalysis(intent=self.intent if self.intent in INTENTS else "other",
+                               confidence=self.confidence, fields=fields, unsupported=unsupported,
+                               done=self.done or self.intent == "done_uploading")
 
 
 @dataclass
@@ -86,49 +66,42 @@ class UsageInfo:
     output_tokens: int = 0
 
 
+# Collects token usage from any agent call made while set (e.g. during a pipeline run).
+USAGE_SINK: ContextVar[list | None] = ContextVar("usage_sink", default=None)
+
+
 class AgentError(Exception):
     pass
 
 
 class AgentProvider(ABC):
-    """Swap implementations via the registry; business logic only sees this interface."""
-
-    name: str = "base"
-    is_llm: bool = False
+    name = "base"
+    is_llm = False
+    supports_vision = False
 
     def __init__(self, models: dict[str, str | None] | None = None):
         self.models = models or {}
         self.last_usage: list[UsageInfo] = []
 
-    # --- core operations -------------------------------------------------------------
     @abstractmethod
     def analyze_message(self, text: str, ctx: AgentContext) -> MessageAnalysis:
-        """One pass that returns intent + extracted requirement proposals."""
+        """Intent + proposed preference values for one user message."""
 
-    def identify_intent(self, text: str, ctx: AgentContext) -> tuple[str, float]:
-        a = self.analyze_message(text, ctx).sanitized()
-        return a.intent, a.confidence
-
-    def extract_video_requirements(self, text: str, ctx: AgentContext) -> MessageAnalysis:
+    def extract_preferences(self, text: str, ctx: AgentContext) -> MessageAnalysis:
         return self.analyze_message(text, ctx).sanitized()
 
-    def generate_response(self, purpose: str, ctx: AgentContext, facts: dict[str, Any]) -> str:
+    def score_moments(self, segments: list[Segment], frames: dict[str, list[bytes]],
+                      context: EditContext) -> list[SegmentScore]:
+        raise AgentError(f"{self.name} has no vision support")
+
+    @abstractmethod
+    def write_script(self, items: list[PlanItem], total_seconds: float, context: EditContext) -> ScriptOutput:
+        """Narration script, one line per selected moment."""
+
+    def generate_response(self, purpose: str, facts: dict[str, Any]) -> str:
         from app.conversation import replies
 
         return replies.render(purpose, facts)
-
-    def summarize_requirements(
-        self, prefs: req.Prefs, credits_cost: int, balance: int, notes: list[str] | None = None
-    ) -> str:
-        # Deterministic on purpose: the user approves exactly what will be generated.
-        return req.summarize(prefs, credits_cost, balance, notes)
-
-    def validate_requirements(self, prefs: req.Prefs, capabilities: dict) -> req.ValidationResult:
-        return req.validate(prefs, capabilities)
-
-    @abstractmethod
-    def write_script(self, prefs: dict[str, Any], scene_count: int, words_per_scene: int) -> Script:
-        """Create the narration script for the video pipeline."""
 
     def health(self) -> dict[str, Any]:
         return {"ok": True, "provider": self.name, "models": self.models}

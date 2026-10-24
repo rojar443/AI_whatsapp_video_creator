@@ -87,3 +87,22 @@ def download(asset_id: str, request: Request, exp: int = Query(...), sig: str = 
     inline = request.query_params.get("inline") == "1"
     return FileResponse(path, media_type=a.mime_type, filename=None if inline else filename,
                         headers={"Cache-Control": "private, max-age=600"})
+
+
+@router.get("/api/pipeline-files/{token}")
+def pipeline_file(token: str):
+    """Signed, expiring access to a work file for external pipeline agents (HTTP steps)."""
+    from pathlib import Path
+
+    from app.security import TokenError, verify_payload
+
+    try:
+        data = verify_payload(token, "pipeline-file")
+    except TokenError as e:
+        raise HTTPException(410 if e.reason == "expired" else 403, "Invalid or expired link") from e
+    s = get_settings()
+    path = Path(str(data.get("p", ""))).resolve()
+    roots = [Path(s.work_dir).resolve(), Path(s.storage_local_dir).resolve(), Path(s.music_library_dir).resolve()]
+    if not any(r == path or r in path.parents for r in roots) or not path.is_file():
+        raise HTTPException(404, "Not found")
+    return FileResponse(path)

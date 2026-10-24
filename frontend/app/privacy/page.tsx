@@ -8,36 +8,46 @@ export default function Privacy() {
 
       <h2>What we collect</h2>
       <ul>
-        <li>Account data: name, email, WhatsApp number, hashed password.</li>
-        <li>WhatsApp messages you send to ReelChat, and transcripts of your voice notes.</li>
-        <li>Video projects: your preferences, generated scripts, videos and their status.</li>
-        <li>Usage records (credits, generation counts) and security logs (sign-ins, admin actions).</li>
+        <li>Account data: name, email, optional phone number, hashed password.</li>
+        <li>The photos and video clips you send, the chat messages you send to ReelChat, and transcripts of your
+          voice notes.</li>
+        <li>Reel projects: your preferences, the editing plan, generated scripts, finished reels and their status.</li>
+        <li>Usage records (credits, generation counts) and security logs (sign-ins, account changes).</li>
       </ul>
 
       <h2>How we use AI services</h2>
       <p>
-        To understand your requests and create videos, your messages and voice notes are sent to third-party AI
-        providers (for example a language model, a speech-to-text service, a text-to-speech service and a stock video
-        or video generation service). Providers are configured by us and process data on our behalf. Voice recordings
-        are deleted right after transcription; we keep the transcript as part of the conversation.
+        To edit your reel, frames from your clips and photos, your messages and voice notes are sent to third-party AI
+        providers we configure (currently Google Gemini to understand requests, pick moments and write the script,
+        and ElevenLabs to read the narration). Voice notes are deleted right after transcription; we keep the
+        transcript as part of the conversation.
       </p>
 
-      <h2>WhatsApp</h2>
+      <h2>Telegram</h2>
       <p>
-        We only message you after you link your number by sending us a code. We use the official WhatsApp Business
-        Platform. Outside a 24-hour conversation window we only send approved notification templates about your
-        videos. Unlink your number on the Account page to stop all messages.
+        We only reply after you message our bot first, using Telegram's official Bot API. We see your Telegram name
+        and chat id, not your phone number. Linking your chat to a website account is optional and moves your drafts
+        into your history. Disconnect it on the Account page at any time. Telegram processes messages under its own
+        privacy policy.
       </p>
 
       <h2>Retention</h2>
       <p>
-        Conversation messages are kept for 90 days and generated files for 30 days by default, after which they are
-        deleted automatically. Project metadata stays in your history until you delete your account.
+        Your original clips and photos are deleted 7 days after upload. Finished reels are kept for 30 days and
+        conversation messages for 90 days. If you haven't registered, drafts are deleted after 3 days. Project
+        details stay in your history until you delete your account.
+      </p>
+
+      <h2>Your own voice (coming later)</h2>
+      <p>
+        If we offer narration in your own cloned voice, we will only create it after you confirm in WhatsApp that the
+        sample is your own voice, we record that consent, and you can delete the voice at any time. Cloning another
+        person's voice is never allowed.
       </p>
 
       <h2>Your rights</h2>
       <p>
-        You can download your videos, unlink WhatsApp, and delete your account (which removes your messages,
+        You can download your reels, unlink WhatsApp, and delete your account (which removes your messages,
         projects and files) from the Account page. Contact us for any other request.
       </p>
 

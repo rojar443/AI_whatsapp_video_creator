@@ -15,11 +15,12 @@ from typing import Any
 class InboundMessage:
     wa_id: str
     message_id: str
-    kind: str  # text | audio | interactive | unsupported
+    kind: str  # text | audio | image | video | interactive | unsupported
     timestamp: datetime
     text: str | None = None
     media_id: str | None = None
     media_mime: str | None = None
+    caption: str | None = None
     button_id: str | None = None
     profile_name: str | None = None
 
@@ -63,8 +64,8 @@ class MessagingProvider(ABC):
     def send_template(self, to: str, template: str, language: str, params: list[str]) -> str: ...
 
     @abstractmethod
-    def download_media(self, media_id: str) -> tuple[bytes, str]:
-        """Return (bytes, mime_type)."""
+    def download_media(self, media_id: str, dest_path: str, max_bytes: int) -> str:
+        """Stream the media to dest_path (abort above max_bytes). Returns the mime type."""
 
     def health(self) -> dict[str, Any]:
         return {"ok": True, "provider": self.name}
@@ -82,9 +83,13 @@ def parse_webhook(payload: dict[str, Any]) -> ParsedWebhook:
     out = ParsedWebhook()
     if not isinstance(payload, dict):
         return out
-    for entry in payload.get("entry") or []:
-        for change in (entry or {}).get("changes") or []:
-            value = (change or {}).get("value") or {}
+    entries = payload.get("entry")
+    for entry in entries if isinstance(entries, list) else []:
+        changes = entry.get("changes") if isinstance(entry, dict) else None
+        for change in changes if isinstance(changes, list) else []:
+            value = change.get("value") if isinstance(change, dict) else None
+            if not isinstance(value, dict):
+                continue
             names = {
                 c.get("wa_id"): (c.get("profile") or {}).get("name")
                 for c in value.get("contacts") or []
@@ -110,6 +115,17 @@ def parse_webhook(payload: dict[str, Any]) -> ParsedWebhook:
                     msg.kind = "audio"
                     msg.media_id = audio.get("id")
                     msg.media_mime = audio.get("mime_type")
+                elif mtype in ("image", "video", "document"):
+                    media = m.get(mtype) or {}
+                    mime = str(media.get("mime_type") or "")
+                    kind = mtype
+                    if mtype == "document":  # clips sent "as document" keep full quality
+                        kind = "video" if mime.startswith("video/") else "image" if mime.startswith("image/") else ""
+                    if kind:
+                        msg.kind = kind
+                        msg.media_id = media.get("id")
+                        msg.media_mime = mime
+                        msg.caption = (str(media.get("caption") or "")[:1000]) or None
                 elif mtype == "interactive":
                     inter = m.get("interactive") or {}
                     reply = inter.get("button_reply") or inter.get("list_reply") or {}
@@ -142,12 +158,17 @@ def build_inbound_payload(
     wa_id: str, message_id: str, *, text: str | None = None, audio_media_id: str | None = None,
     audio_mime: str = "audio/ogg; codecs=opus", button_id: str | None = None,
     button_title: str = "", profile_name: str = "Tester", phone_number_id: str = "dev",
+    media_type: str | None = None, media_id: str | None = None, media_mime: str | None = None,
+    caption: str | None = None,
 ) -> dict[str, Any]:
     """Build a Cloud-API-shaped webhook body (used by the dev simulator and tests)."""
     import time
 
     msg: dict[str, Any] = {"from": wa_id, "id": message_id, "timestamp": str(int(time.time()))}
-    if button_id:
+    if media_type:
+        msg["type"] = media_type
+        msg[media_type] = {"id": media_id, "mime_type": media_mime, **({"caption": caption} if caption else {})}
+    elif button_id:
         msg["type"] = "interactive"
         msg["interactive"] = {"type": "button_reply", "button_reply": {"id": button_id, "title": button_title}}
     elif audio_media_id:

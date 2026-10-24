@@ -4,7 +4,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -19,7 +19,7 @@ from app.api.deps import (
 from app.api.serializers import user_out
 from app.config import get_settings
 from app.db import get_db
-from app.models import User, UserSession, utcnow
+from app.models import LoginToken, User, UserSession, utcnow
 from app.security import (
     TokenError,
     hash_password,
@@ -31,6 +31,7 @@ from app.security import (
     verify_payload,
 )
 from app.services import credits
+from app.services import login as login_svc
 from app.services.audit import audit
 from app.services.email import send_email
 
@@ -43,7 +44,7 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(min_length=10, max_length=200)
-    phone: str = Field(min_length=8, max_length=24)
+    phone: str | None = Field(default=None, max_length=24)  # optional: Telegram-only users
     accept_terms: bool
 
 
@@ -84,18 +85,18 @@ def _start_session(db: Session, user: User, request: Request, response: Response
 @router.post("/register", status_code=201, dependencies=[Depends(rate_limit("register", 5, 3600))])
 def register(body: RegisterIn, request: Request, response: Response, db: Session = Depends(get_db)):
     s = get_settings()
+    if not s.registration_enabled:
+        raise HTTPException(403, "Registration is disabled")
     if not body.accept_terms:
         raise HTTPException(422, "You must accept the terms and privacy policy")
-    phone = normalize_phone(body.phone)
-    if phone is None:
+    phone = normalize_phone(body.phone) if (body.phone or "").strip() else None
+    if (body.phone or "").strip() and phone is None:
         raise HTTPException(422, "Enter your WhatsApp number in international format, e.g. +91 98765 43210")
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "An account with this email already exists")
     user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password),
                 phone_e164=phone, credits_balance=0)
-    if s.admin_email and email == s.admin_email.lower():
-        user.role = "admin"
     db.add(user)
     db.flush()
     credits.grant(db, user, s.default_credits, key=f"signup:{user.id}")
@@ -111,8 +112,8 @@ def register(body: RegisterIn, request: Request, response: Response, db: Session
 
 @router.post("/login", dependencies=[Depends(rate_limit("login", 10, 300))])
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == body.email.lower()))
-    ok = verify_password(user.password_hash if user else _DUMMY_HASH, body.password)
+    user = db.scalar(select(User).where(User.email == body.email.lower(), User.is_anonymous.is_(False)))
+    ok = verify_password(user.password_hash if user and user.password_hash else _DUMMY_HASH, body.password)
     if not user or not ok:
         audit(db, "auth.login_failed", details={"reason": "bad_credentials"}, ip=client_ip(request))
         db.commit()
@@ -160,3 +161,53 @@ def resend_verification(user: User = Depends(current_user)):
     if get_settings().is_dev:
         out["dev_verification_url"] = url
     return out
+
+
+# ------------------------------------------------------------------ Telegram login (link / QR code)
+LOGIN_COOKIE = "rc_login"  # poll secret: only the browser that asked for the token can redeem it
+
+
+class TelegramStartIn(BaseModel):
+    accept_terms: bool
+
+
+@router.post("/telegram/start", dependencies=[Depends(rate_limit("tglogin", 10, 300))])
+def telegram_login_start(body: TelegramStartIn, response: Response, db: Session = Depends(get_db)):
+    s = get_settings()
+    if not s.telegram_bot_token or not s.telegram_bot_username:
+        raise HTTPException(503, "Telegram login is not available on this server")
+    if not body.accept_terms:
+        raise HTTPException(422, "You must accept the terms and privacy policy")
+    row, token, secret = login_svc.create_token(db)
+    db.commit()
+    response.set_cookie(LOGIN_COOKIE, secret, max_age=s.link_code_ttl_minutes * 60, httponly=True,
+                        secure=s.cookie_secure, samesite="lax", path="/api/auth")
+    return {"challenge_id": row.id, "deep_link": login_svc.deep_link(token),
+            "expires_in_minutes": s.link_code_ttl_minutes}
+
+
+@router.get("/telegram/status")
+def telegram_login_status(id: str, request: Request, response: Response, db: Session = Depends(get_db)):
+    row = db.get(LoginToken, id)
+    secret = request.cookies.get(LOGIN_COOKIE)
+    if row is None or not secret or sha256_hex(secret) != row.poll_secret_hash:
+        raise HTTPException(404, "Unknown login")
+    if row.status == "denied":
+        raise HTTPException(403, "This account is unavailable")
+    if row.status == "consumed" or (row.status == "pending" and login_svc.is_expired(row)):
+        return {"status": "expired"}
+    if row.status == "pending":
+        return {"status": "pending"}
+    user = db.get(User, row.user_id)
+    if user is None or user.status != "active":
+        raise HTTPException(403, "This account is unavailable")
+    # Single use, atomically: concurrent polls cannot both start a session.
+    won = db.execute(update(LoginToken).where(LoginToken.id == row.id, LoginToken.status == "confirmed")
+                     .values(status="consumed")).rowcount
+    if won != 1:
+        return {"status": "expired"}
+    sess = _start_session(db, user, request, response)
+    audit(db, "auth.login", actor_id=user.id, details={"method": "telegram"}, ip=client_ip(request))
+    db.commit()
+    response.delete_cookie(LOGIN_COOKIE, path="/api/auth")
+    return {"status": "confirmed", "user": user_out(db, user), "csrf_token": sess.csrf_token}

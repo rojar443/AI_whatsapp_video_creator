@@ -1,91 +1,64 @@
 # API reference
 
-Interactive OpenAPI docs: **http://localhost:8100/api/docs** (`/api/openapi.json`).
+Live OpenAPI: **http://localhost:8100/api/docs**. JSON in/out; errors `{"detail": "..."}`.
+Auth: `rc_session` HttpOnly cookie; every non-GET request needs `X-CSRF-Token` = `rc_csrf` cookie.
 
-Conventions
-* JSON in/out. Errors: `{"detail": "..."}` with a meaningful status (401 unauthenticated, 403 forbidden/CSRF,
-  404 not found *or not yours*, 409 conflict, 402 insufficient credits, 410 expired link, 422 validation, 429 rate limit).
-* Auth: `rc_session` cookie (HttpOnly, SameSite=Lax, Secure in production). Every non-GET request must send
-  header `X-CSRF-Token` equal to the `rc_csrf` cookie (also returned by register/login).
-* The website calls the API same-origin via the Next.js `/api/*` rewrite.
-
-## Auth
-
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| POST | `/api/auth/register` | `{name, email, password(≥10), phone, accept_terms}` | 201; starts a session; sends verification email. Dev mode also returns `dev_verification_url`. 5/hour/IP |
-| POST | `/api/auth/login` | `{email, password}` | 10 per 5 min per IP |
-| POST | `/api/auth/logout` | – | revokes the session |
-| POST | `/api/auth/verify-email` | `{token}` | token is HMAC-signed, 48 h |
-| POST | `/api/auth/resend-verification` | – | 3/hour |
-
-## Account
-
+## Auth & account
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/me` | profile, credits, `whatsapp.status` = `linked` \| `pending` \| `not_linked` |
-| GET | `/api/me/usage` | credit balance + ledger |
-| POST | `/api/me/whatsapp/link` | requires verified email → `{code, message:"LINK 123456", wa_me_url, expires_in_minutes}`. The user sends the message **from their registered number**. 15 min, 5 attempts |
-| DELETE | `/api/me/whatsapp` | unlink (stops all messages) |
-| POST | `/api/me/delete` | `{password}` — deletes account, conversations, messages, projects, files |
+| POST | `/api/auth/register` | `{name, email, password(≥10), phone, accept_terms}` → 201 + session; dev returns `dev_verification_url` |
+| POST | `/api/auth/login` · `/api/auth/logout` | 10 logins / 5 min / IP |
+| POST | `/api/auth/verify-email` | `{token}` (HMAC-signed, 48 h) |
+| POST | `/api/auth/telegram/start` | `{accept_terms}` → `{challenge_id, deep_link: https://t.me/<bot>?start=login_<token>, expires_in_minutes}`; sets HttpOnly `rc_login` (poll secret). The website shows the link as a button and a QR code. 503 if no bot is configured; 10 / 5 min / IP |
+| GET | `/api/auth/telegram/status?id=` | needs the `rc_login` cookie of the browser that started it (else 404). `{status: pending\|expired}`, or once the user pressed Start in the bot, **once**: `{status: confirmed, user, csrf_token}` + session cookies. 403 for a suspended account |
+| GET | `/api/me` | profile, credits, `whatsapp.status` linked/pending/not_linked |
+| GET | `/api/me/usage` | credit ledger |
+| POST | `/api/me/whatsapp/link` | → `{code, message: "LINK 123456", wa_me_url}`; send it **from the registered number**; merges anonymous drafts |
+| DELETE | `/api/me/whatsapp` | unlink |
+| POST | `/api/me/telegram/link` | → `{url: https://t.me/<bot>?start=link_<signed token>}`; opening it in Telegram links that chat (15 min) |
+| DELETE | `/api/me/telegram` | unlink Telegram |
+| POST | `/api/me/delete` | `{password}` — deletes account, chats, projects, files |
 
-## Projects & files
-
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/projects?limit&offset` | own projects, newest first, with latest video (signed URL, 1 h) |
-| GET | `/api/projects/{id}` | preferences per revision (values + `sources` user/default/inferred), jobs, assets, `can_retry` |
-| POST | `/api/projects/{id}/retry` | re-run the failed job of the current revision; 409 if running/nothing to retry, 402 if no credits |
-| GET | `/api/assets/{id}/link` | fresh signed download URL (24 h) for an owned asset |
-| GET | `/api/files/{id}?exp&sig[&inline=1]` | **no session needed** — HMAC-signed, expiring. 410 when expired, 403 when tampered. S3 backend → 302 to a presigned URL |
-
-## WhatsApp webhook
-
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…` | Meta verification handshake |
-| POST | `/api/webhooks/whatsapp` | Requires valid `X-Hub-Signature-256` (HMAC-SHA256 of raw body with `WHATSAPP_APP_SECRET`) else 401. Messages are stored idempotently by `wamid` and processed asynchronously; delivery statuses update outbound messages. Always 200 for valid signed bodies (so Meta doesn't redeliver) |
-
-Supported inbound types: `text`, `audio` (voice notes), `interactive` (button/list replies), template `button`.
-Anything else gets a polite "text or voice notes please".
-
-### Button ids (sent by the agent)
-
-| id | Action |
-|---|---|
-| `confirm:<project_id>:<nonce>` | start generation — only if the project is yours, awaiting confirmation and the nonce is current |
-| `edit:<project_id>` | prompt for changes |
-| `cancel:<project_id>` | cancel (refund if queued) |
-| `retry:<job_id>` | retry a failed job without double charging |
-
-### Text commands
-
-`help` · `status` · `cancel` · `retry` · `link` (new download link) · `new` (start over) · `LINK 123456` (link account) — plus natural language.
+A Telegram login signs in the user bound to the chat (an anonymous bot profile is created if the chat has none) and
+promotes anonymous profiles to regular accounts: projects and credits are kept, the balance is topped up to
+`DEFAULT_CREDITS` once, registered retention applies. Telegram ids listed in `ADMIN_TELEGRAM_IDS` get the admin role.
 
 ## Admin (role `admin`)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/admin/users?q` | users with credits, WhatsApp, job counts |
-| PATCH | `/api/admin/users/{id}` | `{status?: active\|suspended, role?: user\|admin, credits_delta?}` — audited |
-| GET | `/api/admin/providers` | available providers per category + active config (`source`: env or db) |
-| PUT | `/api/admin/providers` | `{category: agent\|video\|tts\|transcription, provider, task?: default\|analysis\|response\|script, model?, reset?}` — agent providers are instantiated first to validate credentials; audited |
-| GET | `/api/admin/health` | provider health checks + queue counts |
-| GET | `/api/admin/usage?days` | usage/cost by kind and provider, job counts |
-| GET | `/api/admin/jobs?status` | jobs + dead-letter tasks |
-| POST | `/api/admin/jobs/{id}/retry` | retry a failed job — audited |
-| GET | `/api/admin/audit-logs?action&limit` | audit trail |
+| GET | `/api/admin/users?q&limit&offset` | everyone who used the app, newest activity first: `{items:[{id,name,email,channels:[{kind: telegram\|whatsapp\|web,id,name,status}],registered,role,status,credits,projects,reels,first_seen,last_seen}], total}`. Account and usage data only: no message text or media links |
+| PATCH | `/api/admin/users/{id}` | `{status?: active\|suspended, credits_delta?}`; can't suspend yourself or go below 0 credits; audited |
 
-## Dev only (`APP_ENV` = development/test; 404 in production)
-
+## Projects & files
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/dev/info` | active providers |
-| POST | `/api/dev/whatsapp/send` | `{text}` or `{button_id, button_title}` — sent *as the logged-in user's number* through the signed webhook path |
-| POST | `/api/dev/whatsapp/voice` | multipart `file` + `transcript` (hint for the mock transcriber) |
-| GET | `/api/dev/whatsapp/messages` | the conversation as WhatsApp would show it |
-| GET | `/api/dev/emails` | emails captured by the console email provider |
+| GET | `/api/projects` | own projects, newest first, latest reel with signed URL |
+| GET | `/api/projects/{id}` | preferences + plan per revision (moments, reasons, skipped files, script), uploads, jobs (+ pipeline used), reels |
+| POST | `/api/projects/{id}/retry` | retry failed render of the current revision (no double charge) |
+| GET | `/api/assets/{id}/link` | fresh signed download URL |
+| GET | `/api/files/{id}?exp&sig[&inline=1]` | signed, expiring download (no session needed); 410 expired, 403 tampered |
+| GET | `/api/pipeline-files/{token}` | signed 1-hour links to work files for HTTP pipeline agents (confined to work/storage/music dirs) |
 
-## Health
+## WhatsApp webhook
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/webhooks/whatsapp` | `hub.mode=subscribe&hub.verify_token=…&hub.challenge=…` |
+| POST | `/api/webhooks/whatsapp` | requires valid `X-Hub-Signature-256`; idempotent by `wamid`; text, audio, image, video, document (video/image), interactive, template buttons; delivery statuses |
 
-`GET /api/health` → `{ok, db, env}` · `GET /api/config` → public settings (app name, dev mode, business number).
+Button ids sent by the bot: `confirm:<project>:<nonce>` · `edit:<project>` · `cancel:<project>` ·
+`genre:<project>:travel|daily_life` · `retry:<job>` — each is checked against the sender's ownership and state.
+Text commands: `help`, `status`, `cancel`, `retry`, `link`, `new`, `register`, `that's all`, `LINK 123456`.
+
+## Health & dev
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/health` | DB check |
+| GET | `/api/health/providers` | dev only: AI, TTS, transcription, messaging, ffmpeg, pipeline steps |
+| GET | `/api/config` | public config |
+| GET | `/api/dev/info` | dev: providers and pipeline |
+| POST | `/api/dev/whatsapp/send` · `/media` · `/samples` · `/voice` | dev simulator (as logged-in user's number, or `phone` for anonymous tests) |
+| GET | `/api/dev/whatsapp/messages` | dev: the chat |
+| GET | `/api/dev/emails` | dev: captured emails |
+
+Pipeline agent contract: [PIPELINE_AGENTS.md](PIPELINE_AGENTS.md).
