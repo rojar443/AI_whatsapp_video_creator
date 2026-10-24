@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 ARG APT_EXTRA=""
 RUN apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 update \
     && apt-get -o Acquire::Retries=10 -o Acquire::http::Timeout=60 install -y --no-install-recommends \
-        ffmpeg fonts-dejavu-core curl ${APT_EXTRA} \
+        ffmpeg fonts-dejavu-core curl redis-server ${APT_EXTRA} \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir --default-timeout=600 uv

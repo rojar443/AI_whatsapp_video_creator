@@ -1,6 +1,6 @@
 # Deploy on Railway
 
-One Railway project with **four** services: `web`, `backend`, Postgres and Redis. The `backend` service runs the API,
+One Railway project with **three** services: `web`, `backend` and Postgres. (Redis runs inside `backend`; add a Railway Redis service later if you want one, then set `REDIS_URL=${{Redis.REDIS_URL}}`.) The `backend` service runs the API,
 the Celery worker and the Telegram poller together (`backend/start_all.sh`), so they can share one volume.
 
 ```
@@ -18,7 +18,7 @@ Only `web` gets a public domain; `backend` stays private. The browser talks to `
 
 ## 1. Create the project
 1. railway.com → **New Project** → **Deploy from GitHub repo** → pick this repo. Railway creates one service.
-2. In the project: **+ New** → **Database** → **PostgreSQL**, and again → **Redis**.
+2. In the project: **+ New** → **Database** → **PostgreSQL**. (Redis is optional, see above.)
 
 ## 2. The `backend` service
 Settings → **Source → Root Directory**: `/backend`. (The repo root only has sub-folders, so Railpack finds no project
@@ -38,7 +38,7 @@ SECRET_KEY=<long random string, 32+ chars>
 PORT=8080                              # the API's port on Railway's private network
 RAILWAY_RUN_UID=0                      # lets the app write to the volume
 DATABASE_URL=${{Postgres.DATABASE_URL}}
-REDIS_URL=${{Redis.REDIS_URL}}
+# REDIS_URL is optional: leave it unset to use the Redis built into the backend image
 TASK_BACKEND=celery
 STORAGE_LOCAL_DIR=/app/var/storage
 WORK_DIR=/app/var/work
