@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.jobs.queue import enqueue
+from app.jobs.dispatch import enqueue
 from app.messaging.base import InboundMessage, parse_webhook
 from app.models import Conversation, Message, WhatsAppAccount, aware, utcnow
 from app.security import verify_meta_signature
@@ -37,7 +37,7 @@ def get_or_create_conversation(db: Session, wa_id: str, profile_name: str | None
     if wa is None:
         try:
             with db.begin_nested():
-                wa = WhatsAppAccount(wa_id=wa_id, status="unlinked", profile_name=(profile_name or "")[:120] or None)
+                wa = WhatsAppAccount(wa_id=wa_id, status="anonymous", profile_name=(profile_name or "")[:120] or None)
                 db.add(wa)
                 db.flush()
         except IntegrityError:
@@ -65,18 +65,17 @@ def ingest_message(db: Session, m: InboundMessage) -> Message | None:
         wa.last_inbound_at = min(m.timestamp, utcnow())
     if m.profile_name:
         wa.profile_name = m.profile_name[:120]
-    row = Message(conversation_id=conv.id, user_id=wa.user_id if wa.status == "linked" else None,
-                  direction="inbound", channel_message_id=m.message_id, kind=m.kind,
-                  body=(m.text or "")[:4000] or None, media_id=m.media_id,
-                  payload={"button_id": m.button_id, "media_mime": m.media_mime} if (m.button_id or m.media_mime) else None,
-                  status="received")
+    payload = {k: v for k, v in {"button_id": m.button_id, "media_mime": m.media_mime, "caption": m.caption}.items() if v}
+    row = Message(conversation_id=conv.id, user_id=wa.user_id, direction="inbound",
+                  channel_message_id=m.message_id, kind=m.kind, body=(m.text or m.caption or "")[:4000] or None,
+                  media_id=m.media_id, payload=payload or None, status="received")
     try:
         with db.begin_nested():
             db.add(row)
             db.flush()
     except IntegrityError:
         return None  # concurrent duplicate delivery
-    enqueue(db, "process_inbound", {"message_id": row.id}, dedupe_key=f"in:{m.message_id}", max_attempts=1)
+    enqueue(db, "process_inbound", row.id)  # sent after commit
     return row
 
 

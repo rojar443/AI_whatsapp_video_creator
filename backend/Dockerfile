@@ -1,15 +1,22 @@
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    UV_HTTP_TIMEOUT=600 UV_CONCURRENT_DOWNLOADS=4 UV_SYSTEM_PYTHON=1 UV_COMPILE_BYTECODE=0
 
-# ffmpeg (with libass for captions), espeak-ng (free offline TTS), fonts incl. Indic scripts.
+# ffmpeg (libass for captions, zoompan/xfade), espeak-ng (offline fallback voice), fonts.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ffmpeg espeak-ng fonts-dejavu-core fonts-lohit-deva fonts-lohit-mlym fonts-lohit-taml curl \
+        ffmpeg espeak-ng fonts-dejavu-core curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install --no-cache-dir --default-timeout=600 uv
+
 WORKDIR /app
+# Extra provider SDKs: e.g. --build-arg EXTRAS=dev,s3,anthropic,openai
+ARG EXTRAS=dev
 COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py && pip install ".[all,dev]" && rm -rf app
+RUN mkdir app && touch app/__init__.py \
+    && uv pip install --system ".[${EXTRAS}]" \
+    && rm -rf app
 COPY . .
 RUN useradd --create-home --uid 1000 reelchat && mkdir -p /app/var && chown -R reelchat /app/var
 USER reelchat

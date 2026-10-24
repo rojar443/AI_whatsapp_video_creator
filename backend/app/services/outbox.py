@@ -1,8 +1,9 @@
 """Transactional outbox for WhatsApp replies.
 
-Handlers append outbound Message rows (status=pending) and one deliver task per turn in the
-same DB transaction. The worker delivers them in order, applying WhatsApp policy:
-outside the 24h customer-service window only an approved template may be sent.
+Handlers append outbound Message rows (status=pending) and one `deliver` task per turn;
+the task is sent only after commit and delivers in order. Outside the 24-hour customer
+service window only an approved template may be sent: the reel waits, the template asks
+the user to reply, and pending media goes out with their next message (see engine).
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.jobs.queue import RetryableTaskError, enqueue
+from app.jobs.dispatch import RetryableError, enqueue
 from app.messaging.base import SendError
 from app.models import Conversation, GeneratedAsset, Message, aware, utcnow
 from app.security import sign_asset_url
@@ -45,17 +46,15 @@ class Outbox:
         return self._add("interactive", body, {"buttons": [{"id": i, "title": t} for i, t in buttons]})
 
     def video(self, asset: GeneratedAsset, caption: str, link_text: str, after_text: str = "") -> Message:
-        return self._add("video", caption, {"asset_id": asset.id, "link_text": link_text,
-                                            "after_text": after_text})
+        return self._add("video", caption, {"asset_id": asset.id, "link_text": link_text, "after_text": after_text})
 
     def flush(self) -> None:
         if self.ids:
-            enqueue(self.db, "deliver", {"message_ids": list(self.ids)},
-                    dedupe_key=f"deliver:{self.ids[0]}", max_attempts=5)
+            enqueue(self.db, "deliver", list(self.ids))
             self.ids = []
 
 
-def _in_window(conv: Conversation) -> bool:
+def in_window(conv: Conversation) -> bool:
     last = aware(conv.whatsapp_account.last_inbound_at)
     return bool(last and utcnow() - last < WINDOW)
 
@@ -65,14 +64,22 @@ def deliver_message(db: Session, msg: Message, provider) -> None:
     conv = db.get(Conversation, msg.conversation_id)
     to = conv.whatsapp_account.wa_id
     payload = msg.payload or {}
-    if not _in_window(conv) and provider.requires_templates_outside_window:
-        text = msg.body or ""
+    if not in_window(conv) and provider.requires_templates_outside_window:
         if msg.kind == "video":
-            asset = db.get(GeneratedAsset, payload.get("asset_id"))
-            text = payload.get("link_text", "") + " " + (sign_asset_url(asset.id) if asset else "")
-        msg.channel_message_id = provider.send_template(
-            to, s.whatsapp_notify_template, s.whatsapp_template_language, [text[:900]])
+            # Media can't be sent outside the window. Send the approved template, keep the reel
+            # pending; it's released when the user replies (engine.release_held_media).
+            if not payload.get("template_sent"):
+                title = (payload.get("link_text") or "Your reel")[:60]
+                params = [title][: s.whatsapp_template_params]
+                provider.send_template(to, s.whatsapp_notify_template, s.whatsapp_template_language, params)
+                msg.payload = dict(payload, template_sent=True)
+            msg.status = "held"
+            return
+        params = [(msg.body or "")[:900]][: s.whatsapp_template_params]
+        msg.channel_message_id = provider.send_template(to, s.whatsapp_notify_template,
+                                                        s.whatsapp_template_language, params)
         msg.payload = dict(payload, via_template=True)
+        msg.status = "sent"
         return
     if msg.kind == "interactive":
         buttons = [(b["id"], b["title"]) for b in payload.get("buttons", [])]
@@ -87,26 +94,39 @@ def deliver_message(db: Session, msg: Message, provider) -> None:
             workdir = Path(s.work_dir) / "deliver"
             workdir.mkdir(parents=True, exist_ok=True)
             local = get_storage().local_path(asset.storage_key, str(workdir))
-            msg.channel_message_id = provider.send_video(to, local, msg.body or "")
-            msg.payload = dict(msg.payload, delivered_as="video")
+            try:
+                msg.channel_message_id = provider.send_video(to, local, msg.body or "")
+                msg.payload = dict(msg.payload, delivered_as="video")
+            except SendError as e:
+                if e.retryable:
+                    raise
+                log.warning("video attachment rejected (%s); sending link instead", e)
+                msg.channel_message_id = provider.send_text(to, _link_body(payload, url))
+                msg.kind = "link"
+                msg.payload = dict(msg.payload, delivered_as="link", attachment_error=str(e)[:200])
         else:
-            body = f"{payload.get('link_text', '')}\n{url}\n\n{payload.get('after_text', '')}".strip()
-            msg.channel_message_id = provider.send_text(to, body)
+            msg.channel_message_id = provider.send_text(to, _link_body(payload, url))
             msg.kind = "link"
             msg.payload = dict(msg.payload, delivered_as="link")
     else:
         msg.channel_message_id = provider.send_text(to, msg.body or "")
+    msg.status = "sent"
+
+
+def _link_body(payload: dict, url: str) -> str:
+    return f"{payload.get('link_text', '')}\n{url}\n\n{payload.get('after_text', '')}".strip()
 
 
 def deliver_batch(db: Session, message_ids: list[str], provider) -> None:
     """Deliver in order; stop at the first retryable failure so ordering is preserved."""
     for mid in message_ids:
         msg = db.get(Message, mid)
-        if msg is None or msg.status in ("sent", "delivered", "read"):
+        if msg is None or msg.status in ("sent", "delivered", "read", "failed"):
+            continue
+        if msg.status == "held" and not in_window(db.get(Conversation, msg.conversation_id)):
             continue
         try:
             deliver_message(db, msg, provider)
-            msg.status = "sent"
             msg.error = None
             db.commit()
         except SendError as e:
@@ -114,7 +134,7 @@ def deliver_batch(db: Session, message_ids: list[str], provider) -> None:
             if e.retryable:
                 msg.status = "pending"
                 db.commit()
-                raise RetryableTaskError(f"delivery failed: {e}") from e
+                raise RetryableError(f"delivery failed: {e}") from e
             msg.status = "failed"
             db.commit()
             log.warning("message %s permanently failed: %s", mid, e)

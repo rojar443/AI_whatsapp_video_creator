@@ -43,22 +43,23 @@ def start_link(request: Request, user: User = Depends(current_user), db: Session
     """Issue a 6-digit code. The user sends 'LINK <code>' from their registered WhatsApp
     number: that proves they own the number and opts them in to messages from us."""
     s = get_settings()
-    if user.email_verified_at is None:
-        raise HTTPException(403, "Verify your email address first")
+    if not user.phone_e164:
+        raise HTTPException(422, "Add your WhatsApp number first")
     wa_id = wa_id_from_e164(user.phone_e164)
     wa = db.scalar(select(WhatsAppAccount).where(WhatsAppAccount.wa_id == wa_id))
     if wa and wa.user_id and wa.user_id != user.id:
-        raise HTTPException(409, "This WhatsApp number is linked to another account")
-    if wa and wa.user_id == user.id:
+        owner = db.get(User, wa.user_id)
+        if owner is not None and not owner.is_anonymous:  # anonymous drafts get merged on link
+            raise HTTPException(409, "This WhatsApp number is linked to another account")
+    if wa and wa.user_id == user.id and wa.status == "linked":
         return {"status": "linked"}
     if wa is None:
-        wa = WhatsAppAccount(wa_id=wa_id, status="unlinked")
+        wa = WhatsAppAccount(wa_id=wa_id, status="anonymous")
         db.add(wa)
         db.flush()
         db.add(Conversation(whatsapp_account_id=wa.id))
     code = f"{secrets.randbelow(1_000_000):06d}"
     wa.pending_user_id = user.id
-    wa.status = "pending"
     wa.link_code_hash = link_code_hash(wa_id, code)
     wa.link_code_expires_at = utcnow() + timedelta(minutes=s.link_code_ttl_minutes)
     wa.link_attempts = 0
@@ -83,7 +84,7 @@ def unlink(request: Request, user: User = Depends(current_user), db: Session = D
     if wa is None:
         return {"ok": True}
     wa.user_id = None
-    wa.status = "unlinked"
+    wa.status = "anonymous"
     conv = db.scalar(select(Conversation).where(Conversation.whatsapp_account_id == wa.id))
     if conv:
         conv.user_id = None

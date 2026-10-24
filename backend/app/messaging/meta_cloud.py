@@ -87,16 +87,30 @@ class MetaCloudProvider(MessagingProvider):
             "template": {"name": template, "language": {"code": language}, "components": components},
         })
 
-    def download_media(self, media_id: str) -> tuple[bytes, str]:
+    def download_media(self, media_id: str, dest_path: str, max_bytes: int) -> str:
+        """Media URLs expire within minutes, so this runs right after the webhook."""
         try:
             meta = self.client.get(f"{self.base}/{media_id}")
             meta.raise_for_status()
             info = meta.json()
-            r = self.client.get(info["url"], timeout=60)
-            r.raise_for_status()
+            declared = int(info.get("file_size") or 0)
+            if declared > max_bytes:
+                raise SendError("media too large", retryable=False, code="too_large")
+            size = 0
+            with self.client.stream("GET", info["url"], timeout=120) as r:
+                r.raise_for_status()
+                with open(dest_path, "wb") as fh:
+                    for chunk in r.iter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes:
+                            raise SendError("media too large", retryable=False, code="too_large")
+                        fh.write(chunk)
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            raise SendError(f"media download failed ({code})", retryable=code >= 500 or code == 429) from e
         except (httpx.HTTPError, KeyError) as e:
             raise SendError(f"media download failed: {e}") from e
-        return r.content, info.get("mime_type") or r.headers.get("content-type", "")
+        return info.get("mime_type") or ""
 
     def health(self) -> dict[str, Any]:
         try:

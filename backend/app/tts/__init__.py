@@ -1,89 +1,121 @@
-"""Text-to-speech providers. Each writes a WAV/MP3 file for one scene's narration."""
+"""Text-to-speech providers. Each returns the audio file plus word timings when available."""
 from __future__ import annotations
 
+import base64
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 
-ESPEAK_VOICES = {"english": "en", "hindi": "hi", "malayalam": "ml", "tamil": "ta", "spanish": "es", "french": "fr"}
+import httpx
 
 
 class TTSError(Exception):
-    pass
+    def __init__(self, message: str, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
+
+
+@dataclass
+class Speech:
+    path: str
+    words: list[tuple[str, float, float]] = field(default_factory=list)  # (word, start, end)
 
 
 class TTSProvider(ABC):
     name = "base"
-    is_mock = False
-    languages: list[str] = list(ESPEAK_VOICES)
+    is_demo = False
 
     @abstractmethod
-    def synthesize(self, text: str, language: str, voice: str, pace: str, out_path: str) -> str:
-        """Write audio to out_path (any ffmpeg-readable format) and return the path."""
+    def synthesize(self, text: str, out_path: str, vibe: str | None = None, voice_id: str | None = None) -> Speech: ...
 
 
-class MockTTSProvider(TTSProvider):
-    """Writes silence sized to the text length. Clearly not speech — dev/test only."""
+def words_from_alignment(alignment: dict) -> list[tuple[str, float, float]]:
+    """ElevenLabs character alignment → word timings."""
+    chars = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    ends = alignment.get("character_end_times_seconds") or []
+    words, cur, w_start, w_end = [], "", None, 0.0
+    for ch, s, e in zip(chars, starts, ends, strict=False):
+        if ch.isspace():
+            if cur:
+                words.append((cur, w_start, w_end))
+            cur, w_start = "", None
+            continue
+        if w_start is None:
+            w_start = float(s)
+        cur += ch
+        w_end = float(e)
+    if cur:
+        words.append((cur, w_start or 0.0, w_end))
+    return words
 
-    name = "mock"
-    is_mock = True
 
-    def __init__(self, ffmpeg: str = "ffmpeg"):
-        self.ffmpeg = ffmpeg
+class ElevenLabsTTS(TTSProvider):
+    name = "elevenlabs"
 
-    def synthesize(self, text: str, language: str, voice: str, pace: str, out_path: str) -> str:
-        wps = {"slow": 2.0, "normal": 2.6, "fast": 3.2}.get(pace, 2.6)
-        seconds = max(1.0, len(text.split()) / wps)
-        cmd = [self.ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi", "-i",
-               "anullsrc=r=44100:cl=mono", "-t", f"{seconds:.2f}", out_path]
-        if subprocess.run(cmd, capture_output=True).returncode != 0:
-            raise TTSError("mock tts failed")
-        return out_path
+    def __init__(self, api_key: str, voice_id: str, model_id: str, base_url: str = "https://api.elevenlabs.io",
+                 client: httpx.Client | None = None):
+        if not api_key:
+            raise ValueError("ELEVENLABS_API_KEY is required for TTS_PROVIDER=elevenlabs")
+        self.voice_id, self.model_id, self.base = voice_id, model_id, base_url.rstrip("/")
+        self.client = client or httpx.Client(timeout=120, headers={"xi-api-key": api_key})
+
+    def synthesize(self, text, out_path, vibe=None, voice_id=None):
+        calm = vibe in ("calm", "emotional", "cinematic")
+        body = {"text": text, "model_id": self.model_id,
+                "voice_settings": {"stability": 0.65 if calm else 0.45, "similarity_boost": 0.75}}
+        url = f"{self.base}/v1/text-to-speech/{voice_id or self.voice_id}/with-timestamps"
+        try:
+            r = self.client.post(url, params={"output_format": "mp3_44100_128"}, json=body)
+        except httpx.HTTPError as e:
+            raise TTSError(f"elevenlabs unreachable: {e}", retryable=True) from e
+        if r.status_code in (429,) or r.status_code >= 500:
+            raise TTSError(f"elevenlabs error {r.status_code}", retryable=True)
+        if r.status_code >= 400:
+            raise TTSError(f"elevenlabs rejected the request ({r.status_code}): {r.text[:200]}")
+        data = r.json()
+        with open(out_path, "wb") as fh:
+            fh.write(base64.b64decode(data["audio_base64"]))
+        return Speech(out_path, words_from_alignment(data.get("alignment") or {}))
+
+    def voices(self) -> list[dict]:
+        r = self.client.get(f"{self.base}/v1/voices")
+        r.raise_for_status()
+        return [{"voice_id": v["voice_id"], "name": v.get("name")} for v in r.json().get("voices", [])]
 
 
-class EspeakTTSProvider(TTSProvider):
-    """Free offline TTS (robotic but real speech). Good for demos without API keys."""
+class EspeakTTS(TTSProvider):
+    """Free offline voice (robotic) — demo mode without an ElevenLabs key."""
 
     name = "espeak"
+    is_demo = True
 
-    def __init__(self, binary: str | None = None):
-        self.binary = binary or shutil.which("espeak-ng") or shutil.which("espeak")
+    def __init__(self):
+        self.binary = shutil.which("espeak-ng") or shutil.which("espeak")
         if not self.binary:
             raise ValueError("espeak-ng is not installed")
 
-    def synthesize(self, text: str, language: str, voice: str, pace: str, out_path: str) -> str:
-        v = ESPEAK_VOICES.get(language, "en") + ("+m3" if voice == "male" else "+f3")
-        speed = {"slow": "140", "normal": "165", "fast": "190"}.get(pace, "165")
-        r = subprocess.run([self.binary, "-v", v, "-s", speed, "-w", out_path, "--", text],
+    def synthesize(self, text, out_path, vibe=None, voice_id=None):
+        r = subprocess.run([self.binary, "-v", "en-us+f3", "-s", "150", "-w", out_path, "--", text],
                            capture_output=True, timeout=60)
         if r.returncode != 0:
             raise TTSError(f"espeak failed: {r.stderr.decode(errors='ignore')[:200]}")
-        return out_path
+        return Speech(out_path)
 
 
-class OpenAITTSProvider(TTSProvider):
-    name = "openai"
-    VOICES = {"female": "nova", "male": "onyx"}
+class MockTTS(TTSProvider):
+    """Silence sized to the text (tests)."""
 
-    def __init__(self, api_key: str, model: str):
-        from openai import OpenAI
+    name = "mock"
+    is_demo = True
 
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY is required for TTS_PROVIDER=openai")
-        self.client = OpenAI(api_key=api_key, timeout=60)
-        self.model = model
+    def synthesize(self, text, out_path, vibe=None, voice_id=None):
+        from app.media import ffmpeg
 
-    def synthesize(self, text: str, language: str, voice: str, pace: str, out_path: str) -> str:
-        speed = {"slow": 0.9, "normal": 1.0, "fast": 1.15}.get(pace, 1.0)
-        try:
-            with self.client.audio.speech.with_streaming_response.create(
-                model=self.model, voice=self.VOICES.get(voice, "nova"), input=text,
-                response_format="wav", speed=speed,
-            ) as resp:
-                resp.stream_to_file(out_path)
-        except Exception as e:  # noqa: BLE001
-            raise TTSError(f"openai tts failed: {type(e).__name__}") from e
-        return out_path
+        seconds = max(1.0, len(text.split()) / 2.5)
+        ffmpeg.run(["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", f"{seconds:.2f}", out_path])
+        return Speech(out_path)
 
 
 def get_tts(name: str | None = None) -> TTSProvider:
@@ -91,8 +123,9 @@ def get_tts(name: str | None = None) -> TTSProvider:
 
     s = get_settings()
     name = name or s.tts_provider
+    if name == "elevenlabs":
+        return ElevenLabsTTS(s.elevenlabs_api_key or "", s.elevenlabs_voice_id, s.elevenlabs_model_id,
+                             s.elevenlabs_base_url)
     if name == "espeak":
-        return EspeakTTSProvider()
-    if name == "openai":
-        return OpenAITTSProvider(s.openai_api_key or "", s.tts_model)
-    return MockTTSProvider(s.ffmpeg_path)
+        return EspeakTTS()
+    return MockTTS()

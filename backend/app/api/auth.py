@@ -94,8 +94,6 @@ def register(body: RegisterIn, request: Request, response: Response, db: Session
         raise HTTPException(409, "An account with this email already exists")
     user = User(email=email, name=body.name.strip(), password_hash=hash_password(body.password),
                 phone_e164=phone, credits_balance=0)
-    if s.admin_email and email == s.admin_email.lower():
-        user.role = "admin"
     db.add(user)
     db.flush()
     credits.grant(db, user, s.default_credits, key=f"signup:{user.id}")
@@ -111,8 +109,8 @@ def register(body: RegisterIn, request: Request, response: Response, db: Session
 
 @router.post("/login", dependencies=[Depends(rate_limit("login", 10, 300))])
 def login(body: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == body.email.lower()))
-    ok = verify_password(user.password_hash if user else _DUMMY_HASH, body.password)
+    user = db.scalar(select(User).where(User.email == body.email.lower(), User.is_anonymous.is_(False)))
+    ok = verify_password(user.password_hash if user and user.password_hash else _DUMMY_HASH, body.password)
     if not user or not ok:
         audit(db, "auth.login_failed", details={"reason": "bad_credentials"}, ip=client_ip(request))
         db.commit()

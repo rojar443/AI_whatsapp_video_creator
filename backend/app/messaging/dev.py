@@ -40,14 +40,18 @@ class DevMessagingProvider(MessagingProvider):
     def send_template(self, to: str, template: str, language: str, params: list[str]) -> str:
         return self._id()
 
-    def download_media(self, media_id: str) -> tuple[bytes, str]:
+    def download_media(self, media_id: str, dest_path: str, max_bytes: int) -> str:
         storage = get_storage()
         key = f"dev-media/{media_id}"
         if not storage.exists(key):
             raise SendError("media not found", retryable=False)
         data = storage.read_bytes(key)
+        if len(data) > max_bytes:
+            raise SendError("media too large", retryable=False, code="too_large")
+        with open(dest_path, "wb") as fh:
+            fh.write(data)
         mime = storage.read_bytes(key + ".mime").decode() if storage.exists(key + ".mime") else "audio/ogg"
-        return data, mime
+        return mime
 
     def health(self) -> dict[str, Any]:
         return {"ok": True, "provider": self.name, "note": "development provider — no real WhatsApp delivery"}
