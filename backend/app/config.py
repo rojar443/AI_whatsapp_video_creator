@@ -2,7 +2,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -129,6 +129,15 @@ class Settings(BaseSettings):
     source_media_retention_days: int = 7
     job_max_attempts: int = 3
     job_retry_base_seconds: float = 10.0
+
+    @field_validator("database_url")
+    @classmethod
+    def _driver(cls, v: str) -> str:
+        """Hosts (Railway, Heroku) hand out postgres:// or postgresql:// URLs; we use the psycopg 3 driver."""
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
 
     @property
     def admin_telegram_id_set(self) -> set[str]:
