@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import client_ip, require_admin
 from app.api.serializers import iso
 from app.db import get_db
-from app.models import ProjectStatus, User, VideoProject, WhatsAppAccount, aware, utcnow
+from app.models import Message, ProjectStatus, User, VideoProject, WhatsAppAccount, aware, utcnow
 from app.services import credits
 from app.services.audit import audit
 
@@ -27,7 +27,8 @@ def _channel(wa: WhatsAppAccount) -> dict:
 
 
 @router.get("/users")
-def list_users(q: str | None = Query(None, max_length=100), limit: int = Query(25, ge=1, le=100),
+def list_users(q: str | None = Query(None, max_length=100),
+               channel: Literal["telegram", "whatsapp", "web"] | None = Query(None), limit: int = Query(25, ge=1, le=100),
                offset: int = Query(0, ge=0), admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     last_in = (select(WhatsAppAccount.user_id.label("uid"), func.max(WhatsAppAccount.last_inbound_at).label("seen"))
                .where(WhatsAppAccount.user_id.is_not(None)).group_by(WhatsAppAccount.user_id).subquery())
@@ -41,6 +42,13 @@ def list_users(q: str | None = Query(None, max_length=100), limit: int = Query(2
                                   or_(func.lower(func.coalesce(WhatsAppAccount.profile_name, "")).like(like),
                                       WhatsAppAccount.wa_id.like(like))))
         stmt, count = stmt.where(cond), count.where(cond)
+    if channel:
+        if channel == "web":
+            cond = User.email.is_not(None)
+        else:
+            like_tg = WhatsAppAccount.wa_id.like("tg:%")
+            cond = exists().where(WhatsAppAccount.user_id == User.id, like_tg if channel == "telegram" else ~like_tg)
+        stmt, count = stmt.where(cond), count.where(cond)
     rows = db.execute(stmt.order_by(seen.desc(), User.created_at.desc()).limit(limit).offset(offset)).all()
     items = []
     for u, last_seen in rows:
@@ -48,12 +56,14 @@ def list_users(q: str | None = Query(None, max_length=100), limit: int = Query(2
         projects = db.scalar(select(func.count(VideoProject.id)).where(VideoProject.user_id == u.id)) or 0
         reels = db.scalar(select(func.count(VideoProject.id)).where(
             VideoProject.user_id == u.id, VideoProject.status == ProjectStatus.completed.value)) or 0
+        messages = db.scalar(select(func.count(Message.id)).where(
+            Message.user_id == u.id, Message.direction == "inbound")) or 0
         channels = [_channel(w) for w in chans] or ([{"kind": "web", "id": None, "name": None, "status": "registered"}]
                                                     if u.email else [])
         items.append({
             "id": u.id, "name": u.name or (chans[0].profile_name if chans else "") or "", "email": u.email,
             "channels": channels, "registered": not u.is_anonymous, "role": u.role, "status": u.status,
-            "credits": u.credits_balance, "projects": projects, "reels": reels,
+            "credits": u.credits_balance, "projects": projects, "reels": reels, "messages": messages,
             "first_seen": iso(u.created_at), "last_seen": iso(aware(last_seen)),
         })
     return {"items": items, "total": db.scalar(count) or 0, "limit": limit, "offset": offset}

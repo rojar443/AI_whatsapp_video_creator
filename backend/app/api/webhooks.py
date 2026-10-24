@@ -16,6 +16,7 @@ from app.jobs.dispatch import enqueue
 from app.messaging.base import InboundMessage, parse_webhook
 from app.models import Conversation, Message, WhatsAppAccount, aware, utcnow
 from app.security import verify_meta_signature
+from app.services import accounts
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -60,6 +61,8 @@ def ingest_message(db: Session, m: InboundMessage) -> Message | None:
         return None
     conv = get_or_create_conversation(db, m.wa_id, m.profile_name)
     wa = conv.whatsapp_account
+    if wa.user_id is None:  # whoever messages the bot is a user from their first message (shows up for admins)
+        conv.user_id = accounts.create_anonymous(db, wa).id
     last = aware(wa.last_inbound_at)
     if last is None or m.timestamp > last:
         wa.last_inbound_at = min(m.timestamp, utcnow())

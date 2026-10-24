@@ -202,3 +202,51 @@ def test_admin_suspend_and_credits(client, db, tg, monkeypatch):  # noqa: F811
     from app.models import AuditLog
 
     assert db.query(AuditLog).filter_by(action="admin.user_updated").count() == 2
+
+
+# --------------------------------------------------------------------------- dev login by Telegram id
+def test_dev_login_by_telegram_id(client, db, monkeypatch):
+    monkeypatch.setattr(get_settings(), "admin_telegram_ids", "123456789")
+    r = client.post("/api/dev/telegram/login", json={"tg_id": "123456789", "name": "Me"})
+    assert r.status_code == 200 and r.json()["user"]["role"] == "admin" and r.json()["user"]["credits"] == 10
+    client.headers["x-csrf-token"] = r.json()["csrf_token"]
+    assert client.get("/api/admin/users").status_code == 200
+    again = fresh_client().post("/api/dev/telegram/login", json={"tg_id": "123456789"})
+    assert again.json()["user"]["id"] == r.json()["user"]["id"]  # same Telegram id, same account
+    assert client.post("/api/dev/telegram/login", json={"tg_id": "not-a-number"}).status_code == 422
+
+
+def test_dev_login_disabled_in_production(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "app_env", "production")
+    assert client.post("/api/dev/telegram/login", json={"tg_id": "123456789"}).status_code == 404
+
+
+# --------------------------------------------------------------------------- everyone who tried the bot
+def test_everyone_who_messaged_the_bot_is_listed_with_timestamps(client, db, tg, monkeypatch):  # noqa: F811
+    from app.telegram_poller import handle_update
+
+    # a chat that messaged but whose message the worker has not processed yet still shows up
+    handle_update(db, tg.provider, msg(1, text="/start"))
+    other = {"update_id": 2, "message": {"message_id": 2, "date": 1_790_000_000, "chat": {"id": 888, "type": "private"},
+                                         "from": {"id": 888, "first_name": "Ravi"}, "text": "hi"}}
+    handle_update(db, tg.provider, other)
+    admin = login_as_admin(client, db, tg, monkeypatch)
+    items = client.get("/api/admin/users").json()["items"]
+    tried = [i for i in items if i["id"] != admin["id"]]
+    assert {i["channels"][0]["id"] for i in tried} == {str(CHAT), "888"}
+    for i in tried:
+        assert i["registered"] is False and i["messages"] == 1
+        assert i["first_seen"] and i["last_seen"]
+    ravi = next(i for i in tried if i["channels"][0]["id"] == "888")
+    assert ravi["name"] == "Ravi" and ravi["last_seen"].startswith("2026-09-21")  # the message's own timestamp
+
+
+def test_admin_channel_filter(client, db, tg, monkeypatch):  # noqa: F811
+    feed(db, tg, msg(1, text="hello"))
+    monkeypatch.setattr(get_settings(), "registration_enabled", True)
+    register(fresh_client(), email="web@example.com", phone="")
+    login_as_admin(client, db, tg, monkeypatch)
+    assert client.get("/api/admin/users", params={"channel": "web"}).json()["total"] == 1
+    assert client.get("/api/admin/users", params={"channel": "telegram"}).json()["total"] == 2  # bot user + admin
+    assert client.get("/api/admin/users", params={"channel": "whatsapp"}).json()["total"] == 0
+    assert client.get("/api/admin/users", params={"channel": "fax"}).status_code == 422

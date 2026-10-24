@@ -10,7 +10,7 @@ import json
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -165,3 +165,35 @@ def sim_messages(request: Request, phone: str | None = None, db: Session = Depen
 @router.get("/emails", dependencies=[Depends(dev_only)])
 def dev_emails():
     return {"items": DEV_OUTBOX[-10:]}
+
+
+class DevTelegramLogin(BaseModel):
+    tg_id: str = Field(pattern=r"^\d{3,16}$")  # your numeric Telegram user id (ask @userinfobot)
+    name: str = Field(default="Dev user", max_length=60)
+
+
+@router.post("/telegram/login", dependencies=[Depends(dev_only)])
+def dev_telegram_login(body: DevTelegramLogin, request: Request, response: Response, db: Session = Depends(get_db)):
+    """Development only: sign in as a Telegram user id without the bot (e.g. while another process is polling the
+    bot's token). Does what a confirmed `/start login_<token>` does. 404 in production."""
+    from app.api.auth import _start_session
+    from app.api.deps import client_ip
+    from app.api.serializers import user_out
+    from app.api.webhooks import get_or_create_conversation
+    from app.services import accounts
+    from app.services.audit import audit
+
+    conv = get_or_create_conversation(db, f"tg:{body.tg_id}", body.name)
+    wa = conv.whatsapp_account
+    user = db.get(User, wa.user_id) if wa.user_id else None
+    if user is None:
+        user = accounts.create_anonymous(db, wa)
+        conv.user_id = user.id
+    accounts.apply_admin_ids(wa, user)
+    if user.status != "active":
+        raise HTTPException(403, "This account is unavailable")
+    accounts.promote_anonymous(db, user, wa)
+    sess = _start_session(db, user, request, response)
+    audit(db, "auth.login", actor_id=user.id, details={"method": "dev-telegram-id"}, ip=client_ip(request))
+    db.commit()
+    return {"status": "confirmed", "user": user_out(db, user), "csrf_token": sess.csrf_token}

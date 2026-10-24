@@ -7,7 +7,8 @@ import { useMe } from "@/lib/useMe";
 type Channel = { kind: "telegram" | "whatsapp" | "web"; id: string | null; name: string | null; status: string };
 type Row = {
   id: string; name: string; email: string | null; channels: Channel[]; registered: boolean; role: string;
-  status: string; credits: number; projects: number; reels: number; first_seen: string | null; last_seen: string | null;
+  status: string; credits: number; projects: number; reels: number; messages: number;
+  first_seen: string | null; last_seen: string | null;
 };
 type Page = { items: Row[]; total: number; limit: number; offset: number };
 
@@ -18,6 +19,7 @@ export default function Admin() {
   const { me } = useMe({ required: true });
   const [data, setData] = useState<Page | null>(null);
   const [q, setQ] = useState("");
+  const [channel, setChannel] = useState("");
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
 
@@ -25,12 +27,13 @@ export default function Admin() {
     try {
       const qs = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
       if (q.trim()) qs.set("q", q.trim());
+      if (channel) qs.set("channel", channel);
       setData(await api<Page>(`/api/admin/users?${qs}`));
       setError("");
     } catch (e: any) {
       setError(e.message);
     }
-  }, [q, offset]);
+  }, [q, channel, offset]);
 
   useEffect(() => {
     if (me?.role === "admin") {
@@ -67,14 +70,21 @@ export default function Admin() {
             onChange={(e) => { setQ(e.target.value); setOffset(0); }}
             style={{ maxWidth: 380 }}
           />
+          <select aria-label="Channel" value={channel} onChange={(e) => { setChannel(e.target.value); setOffset(0); }}
+                  style={{ maxWidth: 170 }}>
+            <option value="">All channels</option>
+            <option value="telegram">Telegram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="web">Website</option>
+          </select>
         </div>
         {error && <div className="alert error">{error}</div>}
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Person</th><th>Channel</th><th>Reels</th><th>Projects</th><th>Credits</th>
-                <th>Last seen</th><th>Status</th><th />
+                <th>Person</th><th>Channel</th><th>First seen</th><th>Last seen</th><th>Msgs</th><th>Reels</th>
+                <th>Credits</th><th>Status</th><th />
               </tr>
             </thead>
             <tbody>
@@ -93,10 +103,11 @@ export default function Admin() {
                       </div>
                     ))}
                   </td>
-                  <td>{u.reels}</td>
-                  <td>{u.projects}</td>
+                  <td className="small" title={u.first_seen ?? ""}>{fmtDate(u.first_seen)}</td>
+                  <td className="small" title={u.last_seen ?? ""}>{fmtDate(u.last_seen)}</td>
+                  <td>{u.messages}</td>
+                  <td title={`${u.projects} projects`}>{u.reels}</td>
                   <td>{u.credits}</td>
-                  <td className="small">{fmtDate(u.last_seen)}</td>
                   <td><span className={`badge ${u.status === "active" ? "ok" : "failed"}`}>{u.status}</span></td>
                   <td className="row">
                     <button className="btn secondary small" onClick={() => patch(u.id, { credits_delta: 10 })}>+10</button>
@@ -112,7 +123,7 @@ export default function Admin() {
                 </tr>
               ))}
               {data && data.items.length === 0 && (
-                <tr><td colSpan={8} className="muted">No one matches.</td></tr>
+                <tr><td colSpan={9} className="muted">No one matches.</td></tr>
               )}
             </tbody>
           </table>
