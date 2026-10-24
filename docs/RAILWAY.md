@@ -10,6 +10,8 @@ Browser  ──▶ web (public domain) ──/api/*──▶ backend (private ne
 
 Only `web` gets a public domain; `backend` stays private. The browser talks to `web`, which proxies `/api/*`.
 
+> **Fastest path:** copy-paste files for both services are in `docs/railway/backend.env` and `docs/railway/web.env`.
+
 ## 0. Before you start
 * Push this branch to GitHub (Railway deploys from GitHub). Use `main`, or the `public` branch if you want a separate deploy branch.
 * Create a **production bot** with @BotFather (do not reuse your dev bot: two processes polling one token fail with
