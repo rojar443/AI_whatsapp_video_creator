@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     secret_key: str = Field(default="dev-insecure-secret-change-me", min_length=16)
     database_url: str = "postgresql+psycopg://reelchat:reelchat@127.0.0.1:55433/reelchat"
+
     redis_url: str = "redis://localhost:6379/0"
     # "celery" in docker/production; "inline" runs tasks in-process (tests / no Redis).
     task_backend: Literal["celery", "inline"] = "celery"
@@ -147,6 +148,15 @@ class Settings(BaseSettings):
     source_media_retention_days: int = 7
     job_max_attempts: int = 3
     job_retry_base_seconds: float = 10.0
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def use_psycopg(cls, value: str) -> str:
+        # Render supplies a plain PostgreSQL URL; the installed driver is Psycopg 3.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix):]
+        return value
 
     @property
     def admin_telegram_id_set(self) -> set[str]:

@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 const HOP = ["host", "connection", "content-length", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer"];
 
 async function proxy(req: NextRequest): Promise<Response> {
-  const backend = (process.env.BACKEND_URL || "http://localhost:8100").replace(/\/$/, "");
+  const backend = (process.env.BACKEND_URL ||
+    (process.env.BACKEND_HOSTPORT ? `http://${process.env.BACKEND_HOSTPORT}` : "http://localhost:8100")
+  ).replace(/\/$/, "");
   const url = backend + req.nextUrl.pathname + req.nextUrl.search;
   const headers = new Headers(req.headers);
   HOP.forEach((h) => headers.delete(h));

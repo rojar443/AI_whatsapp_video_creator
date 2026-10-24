@@ -70,7 +70,8 @@ def create_app() -> FastAPI:
             db_ok = True
         except Exception:  # noqa: BLE001
             db_ok = False
-        return {"ok": db_ok, "db": db_ok, "env": s.app_env}
+        return JSONResponse({"ok": db_ok, "db": db_ok, "env": s.app_env},
+                            status_code=200 if db_ok else 503)
 
     @app.get("/api/health/providers", tags=["health"])
     def provider_health():

@@ -1,5 +1,8 @@
 # Setup, running, tests and deployment
 
+For the Render deployment with managed PostgreSQL, FFmpeg and persistent local
+video storage, see [RENDER.md](RENDER.md).
+
 ## Native Windows setup (PostgreSQL only)
 
 This checkout is configured in the repository-root `.env` for native local development:
