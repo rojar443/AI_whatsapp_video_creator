@@ -19,8 +19,7 @@ sudo usermod -aG docker $USER && newgrp docker
 ## 3. Get the code and configure
 ```bash
 git clone https://github.com/rojar443/AI_whatsapp_video_creator.git && cd AI_whatsapp_video_creator
-cp .env.production.example .env
-nano .env        # fill in the blanks (see below)
+bash deploy/setup-env.sh     # builds .env: generates the secrets, asks only for the bot token and AI key
 ```
 Fill in: `SECRET_KEY` and `POSTGRES_PASSWORD` (`openssl rand -hex 32`), `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_BOT_USERNAME`, `OPENAI_API_KEY` (your AI key) and the address block. **No domain?** use
