@@ -72,7 +72,7 @@ TTS_PROVIDER=mock
 ### If "Railpack failed to prepare the build" keeps happening
 Railway is not picking up the Root Directory. Skip it: leave **Root Directory empty** and instead add a variable that
 names a Dockerfile in the repo root, built with the whole repo as context:
-* `backend` service: `RAILWAY_DOCKERFILE_PATH=Dockerfile.backend` (its `CMD` already runs `bash start_all.sh`)
+* `backend` service: nothing to set (the repo-root `Dockerfile` is the backend), or `RAILWAY_DOCKERFILE_PATH=Dockerfile.backend` (its `CMD` runs `bash start_all.sh`)
 * `web` service: `RAILWAY_DOCKERFILE_PATH=Dockerfile.web`
 
 Everything else (variables, volume, domains) stays the same. In that mode `backend/railway.json` is not read, so the
