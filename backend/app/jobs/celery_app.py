@@ -16,6 +16,8 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_time_limit=1800,
     task_soft_time_limit=1700,
+    worker_hijack_root_logger=False,  # keep our JSON, PII-masking log format
+    worker_redirect_stdouts=False,
     beat_schedule={
         "sweep": {"task": "reelchat.run_default", "schedule": 60.0, "args": ["sweep", [], 1]},
         "purge": {"task": "reelchat.run_default", "schedule": 3600.0, "args": ["purge_expired", [], 1]},
@@ -28,6 +30,11 @@ def _init(**_):
     from app.logging_setup import setup_logging
 
     setup_logging()
+
+
+from app.logging_setup import setup_logging as _setup  # noqa: E402
+
+_setup()
 
 
 def _run(self, name: str, args: list, attempt: int = 1):
