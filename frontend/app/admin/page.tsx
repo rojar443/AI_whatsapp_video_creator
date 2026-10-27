@@ -51,14 +51,19 @@ export default function Admin() {
     }
   }, [me, load]);
 
+  const loadSummary = useCallback(() => {
+    api<Summary>("/api/admin/summary?days=30").then(setSum).catch(() => {});
+  }, []);
+
   useEffect(() => {
-    if (me?.role === "admin") api<Summary>("/api/admin/summary?days=30").then(setSum).catch(() => {});
-  }, [me, data]);
+    if (me?.role === "admin") loadSummary();
+  }, [me, loadSummary]);
 
   async function patch(id: string, body: { status?: string; credits_delta?: number }) {
     try {
       await api(`/api/admin/users/${id}`, { method: "PATCH", json: body });
       load();
+      loadSummary();
     } catch (e: any) {
       setError(e.message);
     }

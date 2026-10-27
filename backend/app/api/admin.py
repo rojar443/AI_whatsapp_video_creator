@@ -61,14 +61,16 @@ def list_users(q: str | None = Query(None, max_length=100),
                func.sum(case((and_(UsageRecord.kind == "llm", UsageRecord.unit == "tokens"), UsageRecord.quantity), else_=0)),
                func.sum(UsageRecord.estimated_cost_usd))
         .where(UsageRecord.user_id.in_(ids)).group_by(UsageRecord.user_id)).all()}
+    inbound = dict(db.execute(
+        select(Message.user_id, func.count(Message.id))
+        .where(Message.user_id.in_(ids), Message.direction == "inbound").group_by(Message.user_id)).all())
     items = []
     for u, last_seen in rows:
         chans = db.scalars(select(WhatsAppAccount).where(WhatsAppAccount.user_id == u.id)).all()
         projects = db.scalar(select(func.count(VideoProject.id)).where(VideoProject.user_id == u.id)) or 0
         reels = db.scalar(select(func.count(VideoProject.id)).where(
             VideoProject.user_id == u.id, VideoProject.status == ProjectStatus.completed.value)) or 0
-        messages = db.scalar(select(func.count(Message.id)).where(
-            Message.user_id == u.id, Message.direction == "inbound")) or 0
+        messages = inbound.get(u.id, 0)
         channels = [_channel(w) for w in chans] or ([{"kind": "web", "id": None, "name": None, "status": "registered"}]
                                                     if u.email else [])
         items.append({
