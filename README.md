@@ -16,6 +16,7 @@ to fit WhatsApp's 16 MB → validation → delivery. **Every step is a configura
 | [docs/WHATSAPP_SETUP.md](docs/WHATSAPP_SETUP.md) | connect a real WhatsApp number (Meta app, token, webhook, Cloudflare Tunnel) |
 | [docs/TELEGRAM_SETUP.md](docs/TELEGRAM_SETUP.md) | use a Telegram bot as the input channel (works on localhost) |
 | [docs/SETUP.md](docs/SETUP.md) | run locally, tests, production deployment |
+| [docs/RENDER.md](docs/RENDER.md) | Render deployment with a separate frontend and supervised backend processes |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | design decisions, state machine, ER diagram, code map |
 | [docs/PIPELINE_AGENTS.md](docs/PIPELINE_AGENTS.md) | plug in your own processing agents |
 | [docs/API.md](docs/API.md) | HTTP API (live at `/api/docs`) |

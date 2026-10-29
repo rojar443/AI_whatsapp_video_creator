@@ -25,6 +25,7 @@ dependencies = [
 anthropic = ["anthropic>=0.70"]
 openai = ["openai>=1.40"]
 s3 = ["boto3>=1.34"]
+render = ["supervisor>=4.2.5,<5"]
 dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
