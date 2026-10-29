@@ -4,7 +4,7 @@ services:
   - type: web
     name: AI_whatsapp_video_creator
     runtime: docker
-    branch: prod_v2
+    branch: prod_v2_render
     region: singapore
     plan: 1c-2g
     numInstances: 1
@@ -60,7 +60,7 @@ services:
   - type: web
     name: reelchat-web
     runtime: docker
-    branch: prod_v2
+    branch: prod_v2_render
     region: singapore
     plan: 0.5c-512mb
     dockerfilePath: ./frontend/Dockerfile

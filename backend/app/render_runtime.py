@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -21,6 +22,11 @@ def prepare_disk() -> Path:
         # Existing files already belong to this stable UID; avoid recursively touching user media.
         for path in paths:
             os.chown(path, user.pw_uid, user.pw_gid)
+        # Docker creates stdout/stderr pipes as root. Supervisor reopens these
+        # through /dev/stdout after dropping privileges, unlike a direct print.
+        for fd in (1, 2):
+            if stat.S_ISFIFO(os.fstat(fd).st_mode):
+                os.fchown(fd, user.pw_uid, user.pw_gid)
         os.initgroups(user.pw_name, user.pw_gid)
         os.setgid(user.pw_gid)
         os.setuid(user.pw_uid)

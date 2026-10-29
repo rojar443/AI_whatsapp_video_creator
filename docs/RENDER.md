@@ -14,9 +14,9 @@ region, with compatible environment isolation settings.
 
 ## Apply the deployment
 
-1. Commit the deployment files and push to `prod_v2`. Pushing alone does not switch the
+1. Commit the deployment files and push to `prod_v2_render`. Pushing alone does not switch the
    existing service to the new Dockerfile: apply the Blueprint below as well.
-2. In Render, create a Blueprint from this repository, select **prod_v2**, and use
+2. In Render, create a Blueprint from this repository, select **prod_v2_render**, and use
    `render.yaml`. If the backend is already managed by another Blueprint, update that
    Blueprint's branch/path instead; do not manage the same service from two Blueprints.
 3. Review the sync plan: update the existing backend and disk, create `reelchat-web`,
