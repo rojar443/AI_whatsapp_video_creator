@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3100",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "next": "15.5.27",
@@ -16,6 +17,7 @@
     "react-dom": "19.1.10"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@testing-library/dom": "10.4.0",
     "@testing-library/react": "16.3.0",
     "@testing-library/user-event": "14.6.1",
