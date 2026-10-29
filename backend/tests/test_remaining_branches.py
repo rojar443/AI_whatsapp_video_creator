@@ -38,8 +38,8 @@ def test_named_song_requests_are_flagged(agent):
 
 @pytest.mark.parametrize("text,field,value", [
     ("add captions please", "captions", True),
-    pytest.param("make it half a minute", "duration", "30", marks=pytest.mark.xfail(
-        strict=True, reason="bug: the 'a minute' pattern matches first and sets 60")),
+    ("make it half a minute", "duration", "30"),
+    ("make it a minute long", "duration", "60"),
     ("vertical tiktok style", "format", "vertical"),
     ("standard quality is fine", "quality", "standard"),
 ])
