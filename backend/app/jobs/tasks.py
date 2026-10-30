@@ -162,7 +162,7 @@ def plan_project(project_id: str, revision: int) -> None:
     from app.pipeline.run import build_plan, work_dir
 
     s = get_settings()
-    with session() as db:
+    with session() as db, credits.persist_usage(db):
         p = db.get(VideoProject, project_id)
         if p is None or p.revision != revision or p.status != S.awaiting_preferences.value or p.stage != "planning":
             return
@@ -221,7 +221,7 @@ def render_job(job_id: str) -> None:
     from app.pipeline.run import RenderFailure, render_job as run_render
 
     s = get_settings()
-    with session() as db:
+    with session() as db, credits.persist_usage(db):
         job = db.scalar(select(GenerationJob).where(GenerationJob.id == job_id).with_for_update())
         if job is None or job.status in (JobStatus.completed.value, JobStatus.cancelled.value, JobStatus.failed.value):
             db.rollback()

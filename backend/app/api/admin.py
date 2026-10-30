@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import client_ip, require_admin
 from app.api.serializers import iso
 from app.db import get_db
-from app.models import Message, ProjectStatus, UsageRecord, User, VideoProject, WhatsAppAccount, aware, utcnow
+from app.models import GenerationJob, Message, ProjectStatus, UsageRecord, User, VideoProject, WhatsAppAccount, aware, utcnow
 from app.services import credits
 from app.services.audit import audit
 
@@ -81,6 +81,83 @@ def list_users(q: str | None = Query(None, max_length=100),
             "first_seen": iso(u.created_at), "last_seen": iso(aware(last_seen)),
         })
     return {"items": items, "total": db.scalar(count) or 0, "limit": limit, "offset": offset}
+
+
+def _usage_totals(db: Session, *conditions) -> dict:
+    llm = and_(UsageRecord.kind == "llm", UsageRecord.unit == "tokens")
+    tokens, inp, out, unknown_split, cost, unknown_cost, calls = db.execute(select(
+        func.coalesce(func.sum(case((llm, UsageRecord.quantity), else_=0)), 0),
+        func.coalesce(func.sum(UsageRecord.input_tokens), 0),
+        func.coalesce(func.sum(UsageRecord.output_tokens), 0),
+        func.count(case((and_(llm, UsageRecord.input_tokens.is_(None)), 1))),
+        func.coalesce(func.sum(UsageRecord.estimated_cost_usd), 0),
+        func.count(case((UsageRecord.cost_known.is_(False), 1))),
+        func.count(case((llm, 1))),
+    ).where(*conditions)).one()
+    return {"tokens": int(tokens), "input_tokens": int(inp), "output_tokens": int(out),
+            "split_complete": unknown_split == 0, "cost_usd": float(cost),
+            "cost_complete": unknown_cost == 0, "llm_calls": calls}
+
+
+@router.get("/users/{user_id}/usage")
+def user_usage(user_id: str, limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
+               admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Explicit metadata allowlist. Never use project/media/message serializers here."""
+    u = db.get(User, user_id)
+    if u is None:
+        raise HTTPException(404, "User not found")
+    owned = UsageRecord.user_id == user_id
+    total = db.scalar(select(func.count(VideoProject.id)).where(VideoProject.user_id == user_id)) or 0
+    projects = db.execute(select(VideoProject.id, VideoProject.status, VideoProject.revision,
+                                 VideoProject.created_at).where(VideoProject.user_id == user_id)
+                          .order_by(VideoProject.created_at.desc(), VideoProject.id)
+                          .limit(limit).offset(offset)).all()
+    items = []
+    for pid, status, revision, created in projects:
+        cond = (owned, UsageRecord.project_id == pid)
+        messages = db.scalar(select(func.count(Message.id)).where(
+            Message.user_id == user_id, Message.project_id == pid, Message.direction == "inbound")) or 0
+        # Revision/task groups are aggregated independently from messages and jobs.
+        groups = db.execute(select(UsageRecord.revision, UsageRecord.task, UsageRecord.provider, UsageRecord.model,
+            func.sum(UsageRecord.quantity), func.sum(UsageRecord.input_tokens), func.sum(UsageRecord.output_tokens),
+            func.count(UsageRecord.id), func.sum(UsageRecord.estimated_cost_usd),
+            func.count(case((UsageRecord.input_tokens.is_(None), 1))),
+            func.count(case((UsageRecord.cost_known.is_(False), 1))))
+            .where(*cond, UsageRecord.kind == "llm", UsageRecord.unit == "tokens")
+            .group_by(UsageRecord.revision, UsageRecord.task, UsageRecord.provider, UsageRecord.model)).all()
+        revisions = {}
+        for rev in range(1, revision + 1):
+            revisions[rev] = {"revision": rev, "tasks": [], "messages": 0, "attempts": 0, "tokens": 0}
+        for rev, task, provider, model, tok, inp, out, calls, cost, missing, unknown in groups:
+            entry = revisions.setdefault(rev, {"revision": rev, "tasks": [], "messages": 0, "attempts": 0, "tokens": 0})
+            entry["tokens"] += int(tok or 0)
+            entry["tasks"].append({"task": task or "historical/unspecified", "provider": provider, "model": model,
+                "tokens": int(tok or 0), "input_tokens": int(inp or 0), "output_tokens": int(out or 0),
+                "llm_calls": calls, "cost_usd": float(cost or 0), "split_complete": missing == 0,
+                "cost_complete": unknown == 0})
+        for rev, count in db.execute(select(Message.revision, func.count(Message.id)).where(
+            Message.user_id == user_id, Message.project_id == pid, Message.direction == "inbound")
+            .group_by(Message.revision)):
+            entry = revisions.setdefault(rev, {"revision": rev, "tasks": [], "messages": 0, "attempts": 0, "tokens": 0})
+            entry["messages"] = count
+        for rev, attempts in db.execute(select(GenerationJob.revision, func.sum(GenerationJob.attempts)).where(
+            GenerationJob.user_id == user_id, GenerationJob.project_id == pid).group_by(GenerationJob.revision)):
+            entry = revisions.setdefault(rev, {"revision": rev, "tasks": [], "messages": 0, "attempts": 0, "tokens": 0})
+            entry["attempts"] = int(attempts or 0)
+        items.append({"id": pid, "status": status, "created_at": iso(created), "messages": messages,
+                      **_usage_totals(db, *cond),
+                      "revisions": sorted(revisions.values(), key=lambda r: r["revision"] or 0)})
+    inbound = db.scalar(select(func.count(Message.id)).where(Message.user_id == user_id,
+                                                              Message.direction == "inbound")) or 0
+    unattributed_messages = db.scalar(select(func.count(Message.id)).where(Message.user_id == user_id,
+        Message.direction == "inbound", Message.project_id.is_(None))) or 0
+    return {"user": {"id": u.id, "name": u.name, "email": u.email, "status": u.status},
+            "summary": {**_usage_totals(db, owned), "messages": inbound, "projects": total,
+                "reels": db.scalar(select(func.count(VideoProject.id)).where(VideoProject.user_id == user_id,
+                    VideoProject.status == ProjectStatus.completed.value)) or 0},
+            "unattributed": {**_usage_totals(db, owned, UsageRecord.project_id.is_(None)),
+                             "messages": unattributed_messages},
+            "items": items, "total": total, "limit": limit, "offset": offset}
 
 
 class UserPatch(BaseModel):

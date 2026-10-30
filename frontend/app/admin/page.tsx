@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { api, fmtDate } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
@@ -124,7 +125,7 @@ export default function Admin() {
               {data?.items.map((u) => (
                 <tr key={u.id}>
                   <td>
-                    <strong>{u.name || "Unknown"}</strong>{" "}
+                    <Link href={`/admin/users/${u.id}`}><strong>{u.name || "Unknown"}</strong></Link>{" "}
                     {u.role === "admin" && <span className="badge ok">admin</span>}
                     <div className="small muted">{u.email ?? (u.registered ? "" : "bot only")}</div>
                   </td>

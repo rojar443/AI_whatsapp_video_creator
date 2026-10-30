@@ -84,6 +84,10 @@ class ConversationEngine:
 
     # ================================================================== entry point
     def handle_inbound(self, message_id: str) -> None:
+        with credits.persist_usage(self.db):
+            self._handle_inbound(message_id)
+
+    def _handle_inbound(self, message_id: str) -> None:
         # FOR NO KEY UPDATE (key_share=True): serialises workers but doesn't block the API's inserts, whose
         # foreign-key checks take FOR KEY SHARE on the conversation — a plain FOR UPDATE deadlocked with them.
         msg = self.db.scalar(select(Message).where(Message.id == message_id).with_for_update(key_share=True))
@@ -93,10 +97,18 @@ class ConversationEngine:
         # Serialise per conversation so a burst of clips can't race into two projects.
         conv = self.db.scalar(select(Conversation).where(Conversation.id == msg.conversation_id)
                               .with_for_update(key_share=True))
-        out = Outbox(self.db, conv)
+        out = Outbox(self.db, conv, conv.active_project_id)
         try:
             with self.db.begin_nested():
                 self._handle(msg, conv, out)
+                # The initiating message may create a project or advance its revision.
+                project = self.db.get(VideoProject, out.project_id) if out.project_id else None
+                initial_revision = msg.revision if project and msg.project_id == project.id else None
+                msg.project_id = project.id if project else None
+                msg.revision = max(initial_revision or 0, project.revision) if project else None
+                for usage in self.db.info.get("provider_usage", []):
+                    if usage.get("message_id") == msg.id:
+                        usage.update(project_id=msg.project_id, revision=msg.revision)
             if msg.status == "received":
                 msg.status = "processed"
         except Exception:  # noqa: BLE001 - never leave the user without a reply
@@ -163,7 +175,9 @@ class ConversationEngine:
               from_caption: bool = False) -> None:
         project = self._active(conv, user)
         out.project_id = project.id if project else None
-        a = self._analyze(text, self._context(project, conv), user)
+        msg.project_id = out.project_id
+        msg.revision = project.revision if project else None
+        a = self._analyze(text, self._context(project, conv), user, msg, project)
         state = project.status if project else None
         if a.unsupported and a.intent not in ("help", "status", "cancel"):
             out.text(replies.render("unsupported", {"items": "; ".join(a.unsupported)}))
@@ -528,12 +542,18 @@ class ConversationEngine:
                 msg.status, msg.error = "failed", "not an audio file"
                 return None
             transcriber = providers.get_transcriber()
+            transcription_agent = getattr(transcriber, "agent", None)
+            if transcription_agent is not None:
+                transcription_agent.last_usage = []
             try:
                 result = transcriber.transcribe(data, mime)
             except TranscriptionError as e:
                 out.text(replies.render("voice_failed"))
                 msg.status, msg.error = "failed", str(e)[:200]
                 return None
+            finally:
+                for usage in getattr(transcription_agent, "last_usage", []):
+                    credits.record_llm(self.db, usage, user_id=msg.user_id, message_id=msg.id)
         # the recording is deleted with the temp dir; only the transcript is kept
         self._discard_dev_media(msg.media_id)
         credits.record_cost(self.db, user_id=msg.user_id, kind="transcription", provider=transcriber.name,
@@ -563,7 +583,8 @@ class ConversationEngine:
             except Exception:  # noqa: BLE001
                 pass
 
-    def _analyze(self, text: str, ctx: AgentContext, user: User) -> MessageAnalysis:
+    def _analyze(self, text: str, ctx: AgentContext, user: User,
+                 msg: Message | None = None, project: VideoProject | None = None) -> MessageAnalysis:
         try:
             self.agent.last_usage = []
             a = self.agent.analyze_message(text, ctx)
@@ -571,9 +592,9 @@ class ConversationEngine:
             log.warning("agent %s failed (%s); falling back to rules", self.agent.name, type(e).__name__)
             a = self.fallback.analyze_message(text, ctx)
         for u in self.agent.last_usage:
-            credits.record_cost(self.db, user_id=user.id, kind="llm", provider=u.provider,
-                                quantity=u.input_tokens + u.output_tokens, unit="tokens",
-                                cost_usd=credits.llm_cost(u.model, u.input_tokens, u.output_tokens))
+            credits.record_llm(self.db, u, user_id=user.id, message_id=msg.id if msg else None,
+                               project_id=project.id if project else None,
+                               revision=project.revision if project else None)
         return a.sanitized()
 
     def _context(self, project: VideoProject | None, conv: Conversation) -> AgentContext:
@@ -631,6 +652,7 @@ class ConversationEngine:
             if job is None or job.user_id != user.id:
                 out.text(replies.render("nothing_to_retry"))
                 return True
+            out.project_id = job.project_id
             self.tool_retry(user, self.db.get(VideoProject, job.project_id), out)
             return True
         project = self.db.get(VideoProject, target)

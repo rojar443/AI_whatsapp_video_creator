@@ -10,3 +10,5 @@ frontend/.next/
 frontend/next-env.d.ts
 *.tsbuildinfo
 *.egg-info/
+scripts/start-local.ps1
+scripts/stop-local.ps1

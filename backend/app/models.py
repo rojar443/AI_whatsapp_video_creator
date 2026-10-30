@@ -150,6 +150,7 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
     project_id: Mapped[str | None] = mapped_column(ForeignKey("video_projects.id", ondelete="SET NULL"), nullable=True)
+    revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     direction: Mapped[str] = mapped_column(String(10))  # inbound | outbound
     channel_message_id: Mapped[str | None] = mapped_column(String(128), unique=True)  # wamid => idempotency
     kind: Mapped[str] = mapped_column(String(20))  # text|audio|image|video|interactive|template|link|unsupported
@@ -318,12 +319,20 @@ class UsageRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
     job_id: Mapped[str | None] = mapped_column(ForeignKey("generation_jobs.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("video_projects.id", ondelete="SET NULL"), index=True, nullable=True)
+    message_id: Mapped[str | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    task: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_known: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     kind: Mapped[str] = mapped_column(String(30), index=True)
     credits_delta: Mapped[int] = mapped_column(Integer, default=0)
     provider: Mapped[str | None] = mapped_column(String(40))
     quantity: Mapped[float] = mapped_column(Float, default=0)
     unit: Mapped[str | None] = mapped_column(String(20))
-    estimated_cost_usd: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
+    estimated_cost_usd: Mapped[float] = mapped_column(Numeric(18, 10), default=0)
     idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True)
     created_at: Mapped[datetime] = mapped_column(TZ, default=utcnow, index=True)
 

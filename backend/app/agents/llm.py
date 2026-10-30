@@ -104,7 +104,7 @@ class LLMAgentProvider(AgentProvider):
         raise NotImplementedError
 
     def _record(self, task: str, inp: int, out: int) -> None:
-        u = UsageInfo(self.name, self.model_for(task), inp, out)
+        u = UsageInfo(self.name, self.model_for(task), inp, out, task)
         self.last_usage.append(u)
         sink = USAGE_SINK.get()
         if sink is not None:
@@ -255,6 +255,10 @@ class GeminiAgentProvider(LLMAgentProvider):
                 config=types.GenerateContentConfig(max_output_tokens=1500))
         except Exception as e:  # noqa: BLE001
             raise AgentError(f"gemini transcription failed: {type(e).__name__}") from e
+        um = getattr(resp, "usage_metadata", None)
+        self._record("analysis", getattr(um, "prompt_token_count", 0) or 0,
+                     getattr(um, "candidates_token_count", 0) or 0)
+        self.last_usage[-1].task = "transcription"
         return (getattr(resp, "text", "") or "").strip()
 
     def health(self) -> dict[str, Any]:

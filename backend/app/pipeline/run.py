@@ -63,11 +63,10 @@ def edit_context(prefs: P.Prefs, target: float) -> C.EditContext:
         playbook=pb.model_dump(mode="json"))
 
 
-def _record_usage(db: Session, user_id: str, sink: list, job_id: str | None = None) -> None:
+def _record_usage(db: Session, user_id: str, sink: list, job_id: str | None = None,
+                  project_id: str | None = None, revision: int | None = None) -> None:
     for u in sink:
-        credits.record_cost(db, user_id=user_id, job_id=job_id, kind="llm", provider=u.provider,
-                            quantity=u.input_tokens + u.output_tokens, unit="tokens",
-                            cost_usd=credits.llm_cost(u.model, u.input_tokens, u.output_tokens))
+        credits.record_llm(db, u, user_id=user_id, job_id=job_id, project_id=project_id, revision=revision)
 
 
 # ====================================================================== planning
@@ -104,7 +103,7 @@ def build_plan(db: Session, project: VideoProject, row: VideoPreferences) -> dic
                                                    seconds=seq.total_seconds, work_dir=str(wd)), used)
     finally:
         USAGE_SINK.reset(token)
-    _record_usage(db, project.user_id, sink)
+        _record_usage(db, project.user_id, sink, project_id=project.id, revision=row.revision)
 
     for q in quality.results:  # surface quality results on the uploads (dashboard)
         row_asset = db.get(ProjectAsset, q.asset_id)
@@ -222,7 +221,7 @@ def render_job(db: Session, job: GenerationJob, on_stage) -> dict:
             width=w, height=h, target_bytes=s.delivery_target_bytes, work_dir=str(wd)), used)
     finally:
         USAGE_SINK.reset(token)
-    _record_usage(db, job.user_id, sink, job.id)
+        _record_usage(db, job.user_id, sink, job.id, project.id, job.revision)
 
     on_stage("validation")
     report = ffmpeg.validate_mp4(out.video_path, w, h, total, tolerance=1.5)

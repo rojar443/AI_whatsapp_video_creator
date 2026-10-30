@@ -2,10 +2,12 @@
 make reserve/refund safe to call twice (e.g. on a retried task)."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import GenerationJob, UsageRecord, User
+from app.models import GenerationJob, Message, UsageRecord, User, VideoProject
 
 
 def _exists(db: Session, key: str) -> bool:
@@ -58,6 +60,49 @@ def record_cost(db: Session, *, user_id: str | None, kind: str, provider: str | 
                 unit: str, cost_usd: float, job_id: str | None = None) -> None:
     db.add(UsageRecord(user_id=user_id, job_id=job_id, kind=kind, provider=provider, quantity=quantity,
                        unit=unit, estimated_cost_usd=round(cost_usd, 4)))
+
+
+@contextmanager
+def persist_usage(db: Session):
+    """Provider usage survives business rollbacks, including failed pipeline attempts.
+
+    Each actual call produces one row. Retrying work incurs additional usage.
+    """
+    db.info["capture_provider_usage"] = True
+    try:
+        yield
+    finally:
+        pending = db.info.pop("provider_usage", [])
+        db.info.pop("capture_provider_usage", None)
+        if pending:
+            db.rollback()
+            # A failed conversation savepoint can roll back a newly created project.
+            # Keep its charged usage as unattributed rather than losing the ledger row.
+            for values in pending:
+                if values["project_id"] and db.get(VideoProject, values["project_id"]) is None:
+                    values.update(project_id=None, revision=None)
+                if values["user_id"] and db.get(User, values["user_id"]) is None:
+                    values["user_id"] = None
+                if values["message_id"] and db.get(Message, values["message_id"]) is None:
+                    values["message_id"] = None
+            db.add_all(UsageRecord(**values) for values in pending)
+            db.commit()
+
+
+def record_llm(db: Session, usage, *, user_id: str, project_id: str | None = None,
+               revision: int | None = None, job_id: str | None = None,
+               message_id: str | None = None) -> None:
+    values = dict(
+        user_id=user_id, project_id=project_id, revision=revision, job_id=job_id,
+        message_id=message_id, kind="llm", provider=usage.provider, model=usage.model,
+        task=usage.task, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+        quantity=usage.input_tokens + usage.output_tokens, unit="tokens",
+        cost_known=usage.model in LLM_PRICE_PER_MTOK,
+        estimated_cost_usd=llm_cost(usage.model, usage.input_tokens, usage.output_tokens))
+    if db.info.get("capture_provider_usage"):
+        db.info.setdefault("provider_usage", []).append(values)
+    else:
+        db.add(UsageRecord(**values))
 
 
 # Rough list prices (USD) used for the admin cost overview. Edit to match your contracts.

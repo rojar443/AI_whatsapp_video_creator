@@ -64,6 +64,7 @@ class UsageInfo:
     model: str | None
     input_tokens: int = 0
     output_tokens: int = 0
+    task: str | None = None
 
 
 # Collects token usage from any agent call made while set (e.g. during a pipeline run).
