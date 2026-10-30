@@ -91,3 +91,35 @@ it("shows a linked fallback icon beside an affected user", async () => {
   render(<Admin />);
   expect((await screen.findByRole("link", { name: "View AI fallback issues for Owner" })).getAttribute("href")).toBe("/admin/users/owner");
 });
+
+it("opens the raw traceback on demand beside a fallback event", async () => {
+  const raw = "Traceback (most recent call last):\n  File scoring.py, in run\nAgentError: 429 quota exceeded";
+  const calls = mockApi({ "GET /api/me": me({ role: "admin" }),
+    "GET /api/admin/users/owner/usage": { ...data, items: [{ ...data.items[0], ai_issue_count: 1 }] },
+    "GET /api/admin/users/owner/projects/project-reference/ai-issues": { total: 1, historical: [], items: [
+      { id: "event", revision: 1, task: "vision", historical: false, error: "quota exceeded" }] },
+    "GET /api/admin/users/owner/projects/project-reference/ai-issues/event/raw": { available: true, raw_log: raw },
+  });
+  const { container } = render(<UserUsage />);
+  await userEvent.click(await screen.findByText("AI fallback logs (1)"));
+  const toggle = await screen.findByRole("button", { name: "View raw log" });
+  expect(calls.some(c => c.url.endsWith("/raw"))).toBe(false);
+  await userEvent.click(toggle);
+  await screen.findByRole("region", { name: "Raw log for revision 1 vision" });
+  await waitFor(() => expect(container.querySelector("pre code")?.textContent).toBe(raw));
+  await userEvent.click(screen.getByRole("button", { name: "Hide raw log" }));
+  expect(container.querySelector("pre")).toBeNull();
+});
+
+it("explains missing historical raw logs without making a raw API request", async () => {
+  const calls = mockApi({ "GET /api/me": me({ role: "admin" }),
+    "GET /api/admin/users/owner/usage": { ...data, items: [{ ...data.items[0], ai_issue_count: 1 }] },
+    "GET /api/admin/users/owner/projects/project-reference/ai-issues": { total: 0, items: [], historical: [
+      { id: "historical-1", revision: 1, task: "vision", historical: true, error: "Original cause not recorded" }] },
+  });
+  render(<UserUsage />);
+  await userEvent.click(await screen.findByText("AI fallback logs (1)"));
+  await userEvent.click(await screen.findByRole("button", { name: "View raw log" }));
+  expect(await screen.findByText(/No raw log was recorded for this event/)).toBeTruthy();
+  expect(calls.some(c => c.url.endsWith("/raw"))).toBe(false);
+});

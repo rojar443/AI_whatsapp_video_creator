@@ -39,6 +39,8 @@ def test_vision_diagnostics(mode, expected):
     assert [e["diagnostic"]["code"] for e in events] == ([expected] if expected else [])
     if mode == "failed":
         assert "quota exceeded" in events[0]["diagnostic"]["error"]
+        assert "Traceback (most recent call last)" in events[0]["diagnostic"]["raw_log"]
+        assert "AgentError: 429 RESOURCE_EXHAUSTED" in events[0]["diagnostic"]["raw_log"]
     if mode in ("failed", "rules"):
         assert result.scorer == "heuristic"
 
@@ -50,6 +52,7 @@ def test_provider_initialization_reason_is_preserved(monkeypatch):
     agent = providers.get_agent()
     assert agent.name == "rules"
     assert "GEMINI_API_KEY is required" in diagnostics.unavailable(agent)
+    assert "Traceback" in agent.fallback_raw_log
     monkeypatch.setattr(get_settings(), "ai_model_vision", "configured-vision-model")
     assert diagnostics.issue("vision", agent, diagnostics.unavailable(agent))["model"] == "configured-vision-model"
 
@@ -60,6 +63,23 @@ def test_sanitizes_keys_urls_and_bearer_tokens(monkeypatch):
                                     "Bearer tokenvalue API_KEY=other-secret")
     assert "403 invalid" in result
     assert not any(secret in result for secret in ("private-test-key", "provider.test", "tokenvalue", "other-secret"))
+
+
+def test_raw_log_keeps_chained_exception_details_and_redacts_secrets(monkeypatch):
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "private-test-key")
+    try:
+        try:
+            raise ValueError("provider rejected private-test-key\n429 quota exceeded")
+        except ValueError as cause:
+            raise AgentError("Vision request failed") from cause
+    except AgentError as error:
+        event = diagnostics.issue("vision", SimpleNamespace(name="gemini", models={}), error)
+    raw = event["diagnostic"]["raw_log"]
+    assert "ValueError: provider rejected [redacted]\n429 quota exceeded" in raw
+    assert "direct cause" in raw and "AgentError: Vision request failed" in raw
+    assert "private-test-key" not in raw
+    long = diagnostics.safe_raw_log("x" * 40000 + "\nFinal exception")
+    assert long.startswith("[Earlier log content truncated]\n") and long.endswith("Final exception")
 
 
 def test_events_survive_rollback_and_do_not_count_as_model_calls(db, client):
@@ -84,12 +104,19 @@ def test_events_survive_rollback_and_do_not_count_as_model_calls(db, client):
         logs = client.get(url + "?limit=1").json()
         assert logs["total"] == 2 and len(logs["items"]) == 1
         assert logs["items"][0]["error"] == "429 quota exceeded"
+        assert "raw_log" not in logs["items"][0]  # Raw output is fetched separately.
+        raw_url = url + "/" + logs["items"][0]["id"] + "/raw"
+        assert client.get(raw_url).json() == {"available": True, "raw_log": "429 quota exceeded"}
+        assert client.get(url + "/missing/raw").status_code == 404
+        assert client.get(f"/api/admin/users/{admin.id}/projects/{project.id}/ai-issues/{logs['items'][0]['id']}/raw").status_code == 404
         assert client.get(url + "?limit=1&offset=1").json()["items"][0]["id"] != logs["items"][0]["id"]
         assert client.get(f"/api/admin/users/{admin.id}/projects/{project.id}/ai-issues").status_code == 404
         app.dependency_overrides[current_user] = lambda: owner
         assert client.get(url).status_code == 403
+        assert client.get(raw_url).status_code == 403
         app.dependency_overrides.pop(current_user)
         assert client.get(url).status_code == 401
+        assert client.get(raw_url).status_code == 401
     finally:
         app.dependency_overrides.pop(current_user, None)
 
@@ -177,3 +204,20 @@ def test_script_failure_records_error_before_using_template():
     assert result.title
     assert events[0]["task"] == "script"
     assert events[0]["diagnostic"]["error"] == "provider returned malformed script"
+
+
+def test_older_events_have_no_raw_output_and_cannot_be_read_via_other_project(db, client):
+    owner = User(name="Admin", role="admin")
+    db.add(owner); db.flush()
+    first, second = VideoProject(user_id=owner.id), VideoProject(user_id=owner.id)
+    db.add_all([first, second]); db.flush()
+    record = UsageRecord(user_id=owner.id, project_id=first.id, kind="ai_fallback",
+                         diagnostic={"error": "Old event without saved output"})
+    db.add(record); db.commit()
+    app.dependency_overrides[current_user] = lambda: owner
+    try:
+        response = client.get(f"/api/admin/users/{owner.id}/projects/{first.id}/ai-issues/{record.id}/raw")
+        assert response.json() == {"available": False, "raw_log": None}
+        assert client.get(f"/api/admin/users/{owner.id}/projects/{second.id}/ai-issues/{record.id}/raw").status_code == 404
+    finally:
+        app.dependency_overrides.pop(current_user, None)

@@ -55,6 +55,8 @@ def get_agent() -> AgentProvider:
 
         fallback = RulesAgentProvider()
         fallback.fallback_error = f"{type(e).__name__}: {e}"
+        from app.agents.diagnostics import exception_log
+        fallback.fallback_raw_log = exception_log(e)
         return fallback
 
 

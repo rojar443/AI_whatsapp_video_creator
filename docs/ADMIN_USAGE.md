@@ -49,6 +49,18 @@ when opened, through the admin-only endpoint
 This endpoint exposes only dedicated diagnostics, not general job errors, prompts,
 scripts, or media. Known configured secrets and provider URLs are redacted.
 
+**View raw log** beside each event opens its captured diagnostic text or exception
+traceback, including chained provider exceptions, in a scrollable code panel.
+It loads on demand from the admin-only endpoint
+`GET /api/admin/users/{user_id}/projects/{project_id}/ai-issues/{issue_id}/raw`.
+Tracebacks omit local variable dumps; configured credentials and provider URLs
+are redacted before storage and again when served. Output is capped at 32,000
+characters, keeping the end of an oversized traceback and marking truncation.
+This is the AI operation's diagnostic output, not the entire server stdout or a
+dump of uploaded media, prompts, or successful model responses. Old events without
+saved raw output explicitly show it is unavailable. No schema migration beyond
+`0004` is needed because raw logs use the existing diagnostic JSON column.
+
 Older saved plans with `scorer=heuristic` also receive a warning, with an explicit
 message that the original cause was not recorded. Zero token usage alone does
 not produce a warning. No warning means no fallback evidence was recorded; it

@@ -216,6 +216,21 @@ def project_ai_issues(user_id: str, project_id: str, limit: int = Query(25, ge=1
     return {"items": items, "historical": historical, "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/users/{user_id}/projects/{project_id}/ai-issues/{issue_id}/raw")
+def ai_issue_raw_log(user_id: str, project_id: str, issue_id: str,
+                     admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    project = db.get(VideoProject, project_id)
+    if project is None or project.user_id != user_id:
+        raise HTTPException(404, "Project not found")
+    row = db.scalar(select(UsageRecord).where(UsageRecord.id == issue_id,
+        UsageRecord.user_id == user_id, UsageRecord.project_id == project_id, UsageRecord.kind == "ai_fallback"))
+    if row is None:
+        raise HTTPException(404, "AI fallback event not found")
+    from app.agents.diagnostics import safe_raw_log
+    raw = (row.diagnostic or {}).get("raw_log")
+    return {"available": bool(raw), "raw_log": safe_raw_log(raw) if raw else None}
+
+
 class UserPatch(BaseModel):
     status: Literal["active", "suspended"] | None = None
     credits_delta: int | None = Field(default=None, ge=-1000, le=1000)
