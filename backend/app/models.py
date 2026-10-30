@@ -324,6 +324,7 @@ class UsageRecord(Base):
     revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     task: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    diagnostic: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_known: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

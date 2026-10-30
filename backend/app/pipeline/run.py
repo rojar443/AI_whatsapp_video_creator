@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import playbooks, providers
 from app.agents.base import USAGE_SINK
+from app.agents.diagnostics import ISSUE_SINK
 from app.config import get_settings
 from app.conversation import preferences as P
 from app.media import ffmpeg
@@ -79,6 +80,8 @@ def build_plan(db: Session, project: VideoProject, row: VideoPreferences) -> dic
     used: dict[str, str] = {}
     sink: list = []
     token = USAGE_SINK.set(sink)
+    issues: list = []
+    issue_token = ISSUE_SINK.set(issues)
     try:
         pre_ctx = edit_context(prefs, 30)
         quality: C.QualityOutput = run_step("quality_filter", C.QualityInput(assets=assets, context=pre_ctx), used)
@@ -103,6 +106,9 @@ def build_plan(db: Session, project: VideoProject, row: VideoPreferences) -> dic
                                                    seconds=seq.total_seconds, work_dir=str(wd)), used)
     finally:
         USAGE_SINK.reset(token)
+        ISSUE_SINK.reset(issue_token)
+        for issue in issues:
+            credits.record_ai_issue(db, issue, user_id=project.user_id, project_id=project.id, revision=row.revision)
         _record_usage(db, project.user_id, sink, project_id=project.id, revision=row.revision)
 
     for q in quality.results:  # surface quality results on the uploads (dashboard)
@@ -184,6 +190,8 @@ def render_job(db: Session, job: GenerationJob, on_stage) -> dict:
         demo.append("heuristic moment selection")
     sink: list = []
     token = USAGE_SINK.set(sink)
+    issues: list = []
+    issue_token = ISSUE_SINK.set(issues)
     try:
         script = C.ScriptOutput.model_validate(plan.get("script") or {"title": project.title, "lines": []})
         narration_path, words, offset = None, [], 0.3
@@ -221,6 +229,10 @@ def render_job(db: Session, job: GenerationJob, on_stage) -> dict:
             width=w, height=h, target_bytes=s.delivery_target_bytes, work_dir=str(wd)), used)
     finally:
         USAGE_SINK.reset(token)
+        ISSUE_SINK.reset(issue_token)
+        for issue in issues:
+            credits.record_ai_issue(db, issue, user_id=job.user_id, project_id=project.id,
+                                    revision=job.revision, job_id=job.id)
         _record_usage(db, job.user_id, sink, job.id, project.id, job.revision)
 
     on_stage("validation")

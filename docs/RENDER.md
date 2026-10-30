@@ -63,9 +63,13 @@ Compose setup intact. At startup its launcher:
 
 1. Requires the persistent disk, prepares `storage`, `work`, and `beat` directories,
    and drops root privileges to UID 1000.
-2. Applies database migrations once, before any backend process starts. Migrations stay
+2. Runs `python -m app.migrate` to apply every pending database migration before any backend process starts. Migrations stay
    in startup because no child should consume work against an outdated schema.
 3. Checks Redis and FFmpeg, then replaces itself with Supervisor as PID 1.
+
+No separate commands for revisions `0003`, `0004`, or future revisions are needed.
+See [portable migration setup](MIGRATIONS.md) for other hosting providers, release
+jobs, and the read-only `python -m app.migrate --check` verification command.
 
 Supervisor restarts each failed process independently, with bounded startup retries.
 The worker consumes `default,media` with concurrency 1; `FFMPEG_THREADS=1` reduces CPU

@@ -14,11 +14,32 @@ from sqlalchemy.orm import Session
 from app.api.deps import client_ip, require_admin
 from app.api.serializers import iso
 from app.db import get_db
-from app.models import GenerationJob, Message, ProjectStatus, UsageRecord, User, VideoProject, WhatsAppAccount, aware, utcnow
+from app.models import GenerationJob, Message, ProjectStatus, UsageRecord, User, VideoPreferences, VideoProject, WhatsAppAccount, aware, utcnow
 from app.services import credits
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _ai_issue_counts(db: Session, user_ids: list[str]) -> dict[str, dict[str, int]]:
+    """Count actual diagnostics and evidence from older heuristic plans, never infer from zero tokens."""
+    counts: dict[str, dict[str, int]] = {}
+    vision_revisions = set()
+    for uid, pid, revision, task in db.execute(select(
+        UsageRecord.user_id, UsageRecord.project_id, UsageRecord.revision, UsageRecord.task).where(
+            UsageRecord.user_id.in_(user_ids), UsageRecord.project_id.is_not(None),
+            UsageRecord.kind == "ai_fallback")):
+        projects = counts.setdefault(uid, {})
+        projects[pid] = projects.get(pid, 0) + 1
+        if task == "vision":
+            vision_revisions.add((pid, revision))
+    for uid, pid, revision in db.execute(select(VideoProject.user_id, VideoProject.id, VideoPreferences.revision)
+        .join(VideoPreferences, VideoPreferences.project_id == VideoProject.id)
+        .where(VideoProject.user_id.in_(user_ids), VideoPreferences.plan["scorer"].as_string() == "heuristic")):
+        if (pid, revision) not in vision_revisions:
+            projects = counts.setdefault(uid, {})
+            projects[pid] = projects.get(pid, 0) + 1
+    return counts
 
 
 def _channel(wa: WhatsAppAccount) -> dict:
@@ -56,6 +77,7 @@ def list_users(q: str | None = Query(None, max_length=100),
         stmt, count = stmt.where(cond), count.where(cond)
     rows = db.execute(stmt.order_by(seen.desc(), User.created_at.desc()).limit(limit).offset(offset)).all()
     ids = [u.id for u, _ in rows]
+    ai_issues = _ai_issue_counts(db, ids)
     usage = {uid: (tok or 0, usd or 0.0) for uid, tok, usd in db.execute(
         select(UsageRecord.user_id,
                func.sum(case((and_(UsageRecord.kind == "llm", UsageRecord.unit == "tokens"), UsageRecord.quantity), else_=0)),
@@ -77,6 +99,7 @@ def list_users(q: str | None = Query(None, max_length=100),
             "id": u.id, "name": u.name or (chans[0].profile_name if chans else "") or "", "email": u.email,
             "channels": channels, "registered": not u.is_anonymous, "role": u.role, "status": u.status,
             "credits": u.credits_balance, "projects": projects, "reels": reels, "messages": messages,
+            "ai_issue_count": sum(ai_issues.get(u.id, {}).values()),
             "tokens": int(usage.get(u.id, (0, 0))[0]), "cost_usd": round(float(usage.get(u.id, (0, 0))[1]), 4),
             "first_seen": iso(u.created_at), "last_seen": iso(aware(last_seen)),
         })
@@ -107,6 +130,7 @@ def user_usage(user_id: str, limit: int = Query(25, ge=1, le=100), offset: int =
     if u is None:
         raise HTTPException(404, "User not found")
     owned = UsageRecord.user_id == user_id
+    ai_issues = _ai_issue_counts(db, [user_id]).get(user_id, {})
     total = db.scalar(select(func.count(VideoProject.id)).where(VideoProject.user_id == user_id)) or 0
     projects = db.execute(select(VideoProject.id, VideoProject.status, VideoProject.revision,
                                  VideoProject.created_at).where(VideoProject.user_id == user_id)
@@ -145,6 +169,7 @@ def user_usage(user_id: str, limit: int = Query(25, ge=1, le=100), offset: int =
             entry = revisions.setdefault(rev, {"revision": rev, "tasks": [], "messages": 0, "attempts": 0, "tokens": 0})
             entry["attempts"] = int(attempts or 0)
         items.append({"id": pid, "status": status, "created_at": iso(created), "messages": messages,
+                      "ai_issue_count": ai_issues.get(pid, 0),
                       **_usage_totals(db, *cond),
                       "revisions": sorted(revisions.values(), key=lambda r: r["revision"] or 0)})
     inbound = db.scalar(select(func.count(Message.id)).where(Message.user_id == user_id,
@@ -158,6 +183,37 @@ def user_usage(user_id: str, limit: int = Query(25, ge=1, le=100), offset: int =
             "unattributed": {**_usage_totals(db, owned, UsageRecord.project_id.is_(None)),
                              "messages": unattributed_messages},
             "items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/users/{user_id}/projects/{project_id}/ai-issues")
+def project_ai_issues(user_id: str, project_id: str, limit: int = Query(25, ge=1, le=100),
+                      offset: int = Query(0, ge=0), admin: User = Depends(require_admin),
+                      db: Session = Depends(get_db)):
+    project = db.get(VideoProject, project_id)
+    if project is None or project.user_id != user_id:
+        raise HTTPException(404, "Project not found")
+    conditions = (UsageRecord.user_id == user_id, UsageRecord.project_id == project_id,
+                  UsageRecord.kind == "ai_fallback")
+    # Only the diagnostic allowlist is exposed; no prompts, media, or general job errors.
+    total = db.scalar(select(func.count(UsageRecord.id)).where(*conditions)) or 0
+    rows = db.scalars(select(UsageRecord).where(*conditions).order_by(
+        UsageRecord.created_at.desc(), UsageRecord.id).limit(limit).offset(offset)).all()
+    from app.agents.diagnostics import safe_error
+    items = [{"id": row.id, "revision": row.revision, "created_at": iso(row.created_at),
+              "task": row.task, "provider": row.provider, "model": row.model,
+              "code": (row.diagnostic or {}).get("code", "unknown"),
+              "error": safe_error((row.diagnostic or {}).get("error", "Error details unavailable.")),
+              "historical": False} for row in rows]
+    vision_revisions = set(db.scalars(select(UsageRecord.revision).where(*conditions, UsageRecord.task == "vision")))
+    historical = [{"id": f"historical-{p.revision}", "revision": p.revision, "task": "vision",
+                   "provider": None, "model": None, "created_at": None, "code": "historical_heuristic",
+                   "historical": True,
+                   "error": "This saved plan used heuristic scoring. The original cause was not recorded; "
+                            "AI may have been disabled, unavailable, or failed."}
+                  for p in db.scalars(select(VideoPreferences).where(VideoPreferences.project_id == project_id,
+                      VideoPreferences.plan["scorer"].as_string() == "heuristic").order_by(VideoPreferences.revision))
+                  if p.revision not in vision_revisions]
+    return {"items": items, "historical": historical, "total": total, "limit": limit, "offset": offset}
 
 
 class UserPatch(BaseModel):
@@ -198,7 +254,8 @@ def summary(days: int = Query(30, ge=1, le=365), admin: User = Depends(require_a
                    for prov, kind, tok, usd in db.execute(
                        select(UsageRecord.provider, UsageRecord.kind,
                               func.sum(case((llm, UsageRecord.quantity), else_=0)), func.sum(UsageRecord.estimated_cost_usd))
-                       .where(UsageRecord.created_at >= since, UsageRecord.kind.not_like("credit%"))  # credits aren't provider usage
+                       .where(UsageRecord.created_at >= since, UsageRecord.kind.not_like("credit%"),
+                              UsageRecord.kind != "ai_fallback")  # diagnostics aren't billed provider usage
                        .group_by(UsageRecord.provider, UsageRecord.kind)).all()]
     talked = db.scalar(select(func.count(func.distinct(Message.user_id))).where(
         Message.direction == "inbound", Message.user_id.is_not(None))) or 0

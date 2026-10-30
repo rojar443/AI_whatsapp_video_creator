@@ -105,6 +105,18 @@ def record_llm(db: Session, usage, *, user_id: str, project_id: str | None = Non
         db.add(UsageRecord(**values))
 
 
+def record_ai_issue(db: Session, issue: dict, *, user_id: str, project_id: str | None = None,
+                    revision: int | None = None, job_id: str | None = None,
+                    message_id: str | None = None) -> None:
+    values = dict(user_id=user_id, project_id=project_id, revision=revision, job_id=job_id,
+                  message_id=message_id, kind="ai_fallback", quantity=0, unit="events",
+                  estimated_cost_usd=0, **issue)
+    if db.info.get("capture_provider_usage"):
+        db.info.setdefault("provider_usage", []).append(values)
+    else:
+        db.add(UsageRecord(**values))
+
+
 # Rough list prices (USD) used for the admin cost overview. Edit to match your contracts.
 LLM_PRICE_PER_MTOK = {
     "claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50),

@@ -53,7 +53,9 @@ def get_agent() -> AgentProvider:
         log.error("AI provider %s unavailable (%s); using rules agent", get_settings().ai_provider, e)
         from app.agents.rules import RulesAgentProvider
 
-        return RulesAgentProvider()
+        fallback = RulesAgentProvider()
+        fallback.fallback_error = f"{type(e).__name__}: {e}"
+        return fallback
 
 
 def get_transcriber():

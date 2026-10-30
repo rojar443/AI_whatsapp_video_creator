@@ -10,6 +10,7 @@ type Row = {
   id: string; name: string; email: string | null; channels: Channel[]; registered: boolean; role: string;
   status: string; credits: number; projects: number; reels: number; messages: number; tokens: number; cost_usd: number;
   first_seen: string | null; last_seen: string | null;
+  ai_issue_count: number;
 };
 type Page = { items: Row[]; total: number; limit: number; offset: number };
 type Summary = {
@@ -126,6 +127,7 @@ export default function Admin() {
                 <tr key={u.id}>
                   <td>
                     <Link href={`/admin/users/${u.id}`}><strong>{u.name || "Unknown"}</strong></Link>{" "}
+                    {u.ai_issue_count > 0 && <Link href={`/admin/users/${u.id}`} title={`${u.ai_issue_count} AI fallback events. View affected projects.`} aria-label={`View AI fallback issues for ${u.name || "Unknown"}`}><span role="img" aria-label="AI fallback detected">⚠️</span></Link>}
                     {u.role === "admin" && <span className="badge ok">admin</span>}
                     <div className="small muted">{u.email ?? (u.registered ? "" : "bot only")}</div>
                   </td>

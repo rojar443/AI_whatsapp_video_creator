@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from app import providers
+from app.agents import diagnostics
 from app.media import ffmpeg
 from app.pipeline.builtin.quality import mean
 from app.pipeline.contracts import ScoringInput, ScoringOutput, SegmentScore
@@ -32,16 +33,23 @@ class MomentScorer:
     def run(self, inp: ScoringInput) -> ScoringOutput:
         agent = providers.get_agent()
         if agent.supports_vision:
-            frames = {s.segment_id: [Path(p).read_bytes() for p in s.frame_paths[:1] if Path(p).exists()]
-                      for s in inp.segments}
             try:
+                frames = {s.segment_id: [Path(p).read_bytes() for p in s.frame_paths[:1] if Path(p).exists()]
+                          for s in inp.segments}
                 scores = agent.score_moments(inp.segments, frames, inp.context)
                 got = {s.segment_id for s in scores}
                 missing = [s for s in inp.segments if s.segment_id not in got]
+                if missing:
+                    diagnostics.report("vision", agent, f"Vision returned no scores for {len(missing)} of "
+                                       f"{len(inp.segments)} moments; those moments used heuristic scoring.",
+                                       "partial_vision")
                 scores += [self._heuristic(s) for s in missing]
                 return ScoringOutput(scores=scores, scorer=f"{agent.name}-vision")
             except Exception as e:  # noqa: BLE001
+                diagnostics.report("vision", agent, e)
                 log.warning("vision scoring via %s failed (%s); using heuristic", agent.name, e)
+        else:
+            diagnostics.report("vision", agent, diagnostics.unavailable(agent), "ai_unavailable")
         return ScoringOutput(scores=[self._heuristic(s) for s in inp.segments], scorer="heuristic")
 
     def _heuristic(self, seg) -> SegmentScore:

@@ -585,12 +585,21 @@ class ConversationEngine:
 
     def _analyze(self, text: str, ctx: AgentContext, user: User,
                  msg: Message | None = None, project: VideoProject | None = None) -> MessageAnalysis:
+        from app.agents import diagnostics
+        failure = None
         try:
             self.agent.last_usage = []
             a = self.agent.analyze_message(text, ctx)
+            if not self.agent.is_llm:
+                failure = diagnostics.issue("analysis", self.agent, diagnostics.unavailable(self.agent), "ai_unavailable")
         except Exception as e:  # noqa: BLE001 - provider outage → deterministic fallback
+            failure = diagnostics.issue("analysis", self.agent, e)
             log.warning("agent %s failed (%s); falling back to rules", self.agent.name, type(e).__name__)
             a = self.fallback.analyze_message(text, ctx)
+        if failure:
+            credits.record_ai_issue(self.db, failure, user_id=user.id, message_id=msg.id if msg else None,
+                                    project_id=project.id if project else None,
+                                    revision=project.revision if project else None)
         for u in self.agent.last_usage:
             credits.record_llm(self.db, u, user_id=user.id, message_id=msg.id if msg else None,
                                project_id=project.id if project else None,

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api, fmtDate } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
+import AiIssues from "./AiIssues";
 
 type Usage = {
   tokens: number; input_tokens: number; output_tokens: number; split_complete: boolean;
@@ -12,7 +13,7 @@ type Usage = {
 };
 type Task = Usage & { task: string; provider: string | null; model: string | null };
 type Revision = { revision: number | null; messages: number; attempts: number; tokens: number; tasks: Task[] };
-type Project = Usage & { id: string; status: string; created_at: string; messages: number; revisions: Revision[] };
+type Project = Usage & { id: string; status: string; created_at: string; messages: number; revisions: Revision[]; ai_issue_count: number };
 type Data = {
   user: { id: string; name: string; email: string | null; status: string };
   summary: Usage & { messages: number; projects: number; reels: number };
@@ -59,7 +60,8 @@ export default function UserUsage() {
         <div className="table-wrap"><table>
           <thead><tr><th>Project reference / revisions</th><th>Created</th><th>Status</th><th>User messages</th><th>Input tokens</th><th>Output tokens</th><th>Total tokens</th><th>Est. cost</th></tr></thead>
           <tbody>{data.items.map(p => <Fragment key={p.id}>
-            <tr><td><code title={p.id}>{p.id.slice(0, 8)}</code></td><td>{fmtDate(p.created_at)}</td><td>{p.status}</td><td>{num(p.messages)}</td><td>{split(p, "input_tokens")}</td><td>{split(p, "output_tokens")}</td><td>{num(p.tokens)}</td><td>{usd(p)}</td></tr>
+            <tr><td><code title={p.id}>{p.id.slice(0, 8)}</code>{p.ai_issue_count > 0 && <> <span role="img" aria-label="AI fallback detected" title="This project has AI fallback events. Open its logs below.">⚠️</span></>}</td><td>{fmtDate(p.created_at)}</td><td>{p.status}</td><td>{num(p.messages)}</td><td>{split(p, "input_tokens")}</td><td>{split(p, "output_tokens")}</td><td>{num(p.tokens)}</td><td>{usd(p)}</td></tr>
+            {p.ai_issue_count > 0 && <tr><td colSpan={8}><AiIssues userId={userId} projectId={p.id} count={p.ai_issue_count} /></td></tr>}
             <tr><td colSpan={8}><details><summary>Revision breakdown for {p.id.slice(0, 8)}</summary>
               {p.revisions.map(r => <div key={r.revision ?? "unknown"} style={{ margin: "16px 0" }}>
                 <strong>{r.revision === null ? "Unattributed revision" : `Revision ${r.revision}`}</strong>

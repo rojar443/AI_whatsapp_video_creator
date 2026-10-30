@@ -113,7 +113,7 @@ def main() -> None:
     if settings.app_env != "production" or settings.secret_key.startswith("dev-"):
         raise RuntimeError("Set APP_ENV=production and a production SECRET_KEY")
     # Fail startup before any process can consume jobs against an old schema.
-    subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True)
+    subprocess.run([sys.executable, "-m", "app.migrate"], check=True)
     Redis.from_url(settings.redis_url, socket_connect_timeout=5, socket_timeout=5).ping()
     for executable in (settings.ffmpeg_path, settings.ffprobe_path):
         subprocess.run([executable, "-version"], check=True, stdout=subprocess.DEVNULL)

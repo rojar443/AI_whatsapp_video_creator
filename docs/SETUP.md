@@ -1,5 +1,8 @@
 # Setup, running, tests and deployment
 
+Database migrations run automatically in both Docker startup paths. For manual
+deployments and moving to another host, see [database migrations](MIGRATIONS.md).
+
 ## 1. Local demo mode (no accounts needed)
 Runs fully offline with the rules agent, a silent placeholder voice, sample footage and the WhatsApp simulator.
 For an audible offline voice build with `docker compose build --build-arg APT_EXTRA=espeak-ng` and set `TTS_PROVIDER=espeak`.
