@@ -451,11 +451,8 @@ class ConversationEngine:
         if row is None:
             out.text(replies.render("login_failed", {"web_url": web}))
             return
-        user = self.db.get(User, wa.user_id) if wa.user_id else None
-        if user is None:
-            user = accounts.create_anonymous(self.db, wa)
-        conv.user_id = out.conv.user_id = msg.user_id = user.id
-        accounts.apply_admin_ids(wa, user)
+        user = accounts.resolve_telegram_login_user(self.db, wa, conv)
+        out.conv.user_id = msg.user_id = user.id
         if user.status != "active":
             row.status = "denied"
             out.text(replies.render("suspended"))

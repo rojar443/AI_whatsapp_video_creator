@@ -185,11 +185,7 @@ def dev_telegram_login(body: DevTelegramLogin, request: Request, response: Respo
 
     conv = get_or_create_conversation(db, f"tg:{body.tg_id}", body.name)
     wa = conv.whatsapp_account
-    user = db.get(User, wa.user_id) if wa.user_id else None
-    if user is None:
-        user = accounts.create_anonymous(db, wa)
-        conv.user_id = user.id
-    accounts.apply_admin_ids(wa, user)
+    user = accounts.resolve_telegram_login_user(db, wa, conv)
     if user.status != "active":
         raise HTTPException(403, "This account is unavailable")
     accounts.promote_anonymous(db, user, wa)

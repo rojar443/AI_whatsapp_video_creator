@@ -32,6 +32,11 @@ Tip for testers: send clips **as a document** (📎 → Document) to avoid Whats
 docker compose run --rm --no-deps -e TASK_BACKEND=inline api pytest
 # fast local run (FFmpeg tests skip if ffmpeg is missing)
 cd backend && uv venv && uv pip install -e ".[dev]" && .venv/bin/pytest
+# frontend unit tests (Vitest + Testing Library)
+cd frontend && npm test
+# end-to-end smoke test: starts Redis, the API, a Celery worker and Next itself
+# (needs redis-server, ffmpeg and the backend venv; first run: npx playwright install chromium)
+cd frontend && npm run test:e2e
 ```
 Suites: `test_units.py` (extraction, safety, playbooks, sequencing, captions, plugin/HTTP steps, Gemini adapter),
 `test_flow.py` (acceptance flow: anonymous draft, batch timeout, revision, linking/merge, duplicate confirmation,

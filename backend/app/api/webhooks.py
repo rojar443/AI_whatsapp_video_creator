@@ -62,7 +62,11 @@ def ingest_message(db: Session, m: InboundMessage) -> Message | None:
     conv = get_or_create_conversation(db, m.wa_id, m.profile_name)
     wa = conv.whatsapp_account
     if wa.user_id is None:  # whoever messages the bot is a user from their first message (shows up for admins)
-        conv.user_id = accounts.create_anonymous(db, wa).id
+        db.refresh(wa, with_for_update=True)  # lock, so parallel first messages create one user
+        if wa.user_id is None:
+            conv.user_id = accounts.create_anonymous(db, wa).id
+        else:
+            conv.user_id = wa.user_id
     last = aware(wa.last_inbound_at)
     if last is None or m.timestamp > last:
         wa.last_inbound_at = min(m.timestamp, utcnow())

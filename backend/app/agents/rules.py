@@ -94,10 +94,10 @@ class RulesAgentProvider(AgentProvider):
             f["duration"] = str(nearest)
             if n not in (15, 30, 60):
                 unsupported.append(f"{n}-second length (I can do 15, 30 or 60 s, or the original length) — using {nearest} s")
-        elif re.search(r"\b(1|one|a)\s*-?\s*min(ute)?\b", t):
-            f["duration"] = "60"
         elif "half a minute" in t:
             f["duration"] = "30"
+        elif re.search(r"\b(1|one|a)\s*-?\s*min(ute)?\b", t):
+            f["duration"] = "60"
         elif re.search(r"\b(original|full|whole)\s+(length|duration)\b|\bkeep (it|the) (length|duration)\b", t):
             f["duration"] = "original"
         elif re.search(r"\bshorter\b", t) and ctx.prefs.get("duration") in ("60", "30"):

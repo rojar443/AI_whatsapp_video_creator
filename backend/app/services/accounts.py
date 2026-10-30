@@ -70,6 +70,17 @@ def apply_admin_ids(wa: WhatsAppAccount, user: User) -> None:
         user.role = "admin"
 
 
+def resolve_telegram_login_user(db: Session, wa: WhatsAppAccount, conv: Conversation) -> User:
+    """The user a confirmed Telegram login signs in as (created if needed, admin ids applied). The caller must
+    refuse non-active users before calling promote_anonymous."""
+    user = db.get(User, wa.user_id) if wa.user_id else None
+    if user is None:
+        user = create_anonymous(db, wa)
+    conv.user_id = user.id
+    apply_admin_ids(wa, user)
+    return user
+
+
 def promote_anonymous(db: Session, user: User, wa: WhatsAppAccount) -> None:
     """A Telegram web login makes an anonymous bot profile a regular account: registered quotas and retention,
     projects and credits kept, balance topped up to the registered default once."""
