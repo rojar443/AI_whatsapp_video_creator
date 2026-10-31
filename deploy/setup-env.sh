@@ -10,7 +10,14 @@ command -v openssl >/dev/null || { echo "openssl is required (sudo apt install -
 # Ask and validate everything before touching .env, so a typo never breaks a working setup.
 read -r -s -p "Telegram bot token (from @BotFather, input hidden): " TOKEN; echo
 read -r -p "Bot username without @ [Chat2ReelBot]: " BOT; BOT=${BOT:-Chat2ReelBot}
-read -r -s -p "AI API key (Pollinations, input hidden): " AIKEY; echo
+read -r -p "AI provider: gemini (Google directly) or openai_compatible (Pollinations) [gemini]: " AIPROVIDER
+AIPROVIDER=${AIPROVIDER:-gemini}
+case "$AIPROVIDER" in
+  gemini) AIKEYVAR=GEMINI_API_KEY; AIMODEL=gemini-3.8-flash; AIBASE=; AILABEL="Google Gemini" ;;
+  openai_compatible) AIKEYVAR=OPENAI_API_KEY; AIMODEL=google/gemini-3.8-flash; AIBASE=https://gen.pollinations.ai/v1; AILABEL=Pollinations ;;
+  *) echo "Choose gemini or openai_compatible. Run again; .env was not changed."; exit 1 ;;
+esac
+read -r -s -p "AI API key ($AILABEL, input hidden): " AIKEY; echo
 [[ "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] || { echo "That doesn't look like a Telegram bot token (expected 123456789:AA...). Run again; .env was not changed."; exit 1; }
 [ -n "$AIKEY" ] || { echo "The AI key is empty. Run again; .env was not changed."; exit 1; }
 
@@ -50,7 +57,10 @@ setvar CORS_ORIGINS "https://$ADDR,https://$IP"
 
 setvar TELEGRAM_BOT_TOKEN "$TOKEN"
 setvar TELEGRAM_BOT_USERNAME "$BOT"
-setvar OPENAI_API_KEY "$AIKEY"
+setvar AI_PROVIDER "$AIPROVIDER"
+setvar AI_MODEL "$AIMODEL"
+setvar OPENAI_BASE_URL "$AIBASE"
+setvar "$AIKEYVAR" "$AIKEY"
 chmod 600 "$NEW"
 
 if [ -f .env ]; then
@@ -60,9 +70,9 @@ fi
 mv "$NEW" .env
 
 echo; echo "Done. .env created with these values set (secrets not shown):"
-for k in SITE_ADDRESS SITE_IP WEB_BASE_URL CORS_ORIGINS SECRET_KEY POSTGRES_PASSWORD TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME OPENAI_API_KEY AI_MODEL; do
+for k in SITE_ADDRESS SITE_IP WEB_BASE_URL CORS_ORIGINS SECRET_KEY POSTGRES_PASSWORD TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME "$AIKEYVAR" AI_PROVIDER AI_MODEL; do
   v=$(grep "^$k=" .env | cut -d= -f2-)
-  case $k in SECRET_KEY|POSTGRES_PASSWORD|TELEGRAM_BOT_TOKEN|OPENAI_API_KEY) printf '  %-22s set (%d characters)\n' "$k" "${#v}";;
+  case $k in SECRET_KEY|POSTGRES_PASSWORD|TELEGRAM_BOT_TOKEN|OPENAI_API_KEY|GEMINI_API_KEY) printf '  %-22s set (%d characters)\n' "$k" "${#v}";;
                                                                          *) printf '  %-22s %s\n' "$k" "$v";; esac
 done
 if ! command -v docker >/dev/null; then

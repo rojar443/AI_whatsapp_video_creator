@@ -22,9 +22,33 @@ git clone https://github.com/rojar443/AI_whatsapp_video_creator.git && cd AI_wha
 bash deploy/setup-env.sh     # builds .env: generates the secrets, asks for the bot token, AI key and server IP/domain
 ```
 Fill in: `SECRET_KEY` and `POSTGRES_PASSWORD` (`openssl rand -hex 32`), `TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_BOT_USERNAME`, `OPENAI_API_KEY` (your AI key) and the address block. **No domain?** use
+`TELEGRAM_BOT_USERNAME`, `GEMINI_API_KEY` (Google directly, the default) or
+`OPENAI_API_KEY` (when choosing the Pollinations gateway), and the address block. **No domain?** use
 `<server-ip>.sslip.io`, e.g. `SITE_ADDRESS=203-0-113-7.sslip.io` (dashes for the IP's dots), and set `WEB_BASE_URL`,
 `PUBLIC_BASE_URL`, `CORS_ORIGINS` to `https://` + that name.
+
+Keep the AI provider and model notation paired:
+
+| Provider | Model | Key |
+| --- | --- | --- |
+| `gemini` (Google directly) | `gemini-3.8-flash` | `GEMINI_API_KEY` |
+| `openai_compatible` (Pollinations gateway) | `google/gemini-3.8-flash` | `OPENAI_API_KEY` |
+
+The Gemini adapter accepts the `google/` prefix for compatibility and removes it
+before calling Google; the gateway adapter preserves its model IDs. A direct
+Google 404 with `google/gemini-*` in older versions is a model routing mismatch.
+Changing `.env.production.example` does not update a running server's `.env`.
+For an existing Google deployment, set `AI_PROVIDER=gemini` and
+`AI_MODEL=gemini-3.8-flash` in its actual environment. Also correct any nonblank
+`AI_MODEL_VISION` or `AI_MODEL_SCRIPT` overrides (or leave them blank to inherit).
+Keep the existing `GEMINI_API_KEY`. Rebuild/recreate the backend services to apply:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate api worker telegram
+```
+
+Create a new project after restarting to verify vision selection and recorded
+model usage. Old plans and fallback logs remain historical records.
 
 ## 4. Start
 ```bash

@@ -210,6 +210,14 @@ class GeminiAgentProvider(LLMAgentProvider):
     name = "gemini"
     default_model = "gemini-flash-latest"
 
+    def model_for(self, task: str) -> str:
+        model = super().model_for(task).strip()
+        # Gateways namespace model IDs as google/gemini-*. The Google SDK expects
+        # the native ID; normalize here for generation, vision, health and usage.
+        if model.startswith("google/gemini-"):
+            model = model.removeprefix("google/")
+        return model
+
     def __init__(self, models=None, api_key: str | None = None, client=None, timeout: float = 60):
         super().__init__(models)
         if client is None:

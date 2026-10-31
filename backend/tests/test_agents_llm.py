@@ -278,6 +278,26 @@ def test_gemini_json_success_records_usage():
     assert m.calls[0]["config"].response_mime_type == "application/json"
 
 
+@pytest.mark.parametrize("model", ["google/gemini-3.8-flash", "gemini-3.8-flash"])
+def test_gemini_uses_native_model_id_for_api_and_usage(model):
+    remote = FakeGeminiModels(SimpleNamespace(text='{"intent": "help", "fields": {}}',
+        usage_metadata=SimpleNamespace(prompt_token_count=12, candidates_token_count=3)))
+    agent = GeminiAgentProvider(models={"default": model, "vision": model, "script": model},
+                                client=SimpleNamespace(models=remote))
+    agent.analyze_message("help", AgentContext(state="none"))
+    assert remote.calls[0]["model"] == "gemini-3.8-flash"
+    assert agent.last_usage[0].model == "gemini-3.8-flash"
+    assert all(agent.model_for(task) == "gemini-3.8-flash" for task in ("analysis", "vision", "script"))
+    agent.transcribe(b"audio", "audio/ogg")
+    assert remote.calls[-1]["model"] == "gemini-3.8-flash"
+
+
+def test_gateway_model_name_is_unchanged_for_openai_compatible():
+    agent = OpenAIAgentProvider(models={"default": "google/gemini-3.8-flash"},
+                               client=SimpleNamespace(), name="openai_compatible")
+    assert agent.model_for("vision") == "google/gemini-3.8-flash"
+
+
 def test_gemini_image_parts_converted():
     p, _ = gemini()
     out = p._contents(["text", ("image/jpeg", b"\xff\xd8")])
