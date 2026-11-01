@@ -7,6 +7,7 @@ it only returns JSON that the backend validates against closed option lists.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from typing import Any
@@ -220,13 +221,23 @@ class GeminiAgentProvider(LLMAgentProvider):
 
     def __init__(self, models=None, api_key: str | None = None, client=None, timeout: float = 60):
         super().__init__(models)
+        self._credential_summary = "credential_source=injected_client"
         if client is None:
             from google import genai
             from google.genai import types
 
-            if not api_key:
+            # Match the SDK's whitespace normalization without logging the secret.
+            key = (api_key or "").strip()
+            fingerprint = hashlib.sha256(key.encode()).hexdigest()[:12] if key else "none"
+            self._credential_summary = (
+                f"credential_source=GEMINI_API_KEY credential_present={bool(key)} "
+                f"credential_length={len(key)} credential_sha256={fingerprint} "
+                f"credential_whitespace_trimmed={key != (api_key or '')}"
+            )
+            log.info("gemini credentials: %s", self._credential_summary)
+            if not key:
                 raise ValueError("GEMINI_API_KEY is required for AI_PROVIDER=gemini")
-            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=int(timeout * 1000)))
+            client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=int(timeout * 1000)))
         self.client = client
 
     def _contents(self, parts: list[Part]) -> list:
@@ -246,7 +257,8 @@ class GeminiAgentProvider(LLMAgentProvider):
             resp = self.client.models.generate_content(model=self.model_for(task), contents=self._contents(parts),
                                                        config=cfg)
         except Exception as e:  # noqa: BLE001 - SDK raises several error types
-            raise AgentError(f"gemini request failed: {type(e).__name__}: {str(e)[:200]}") from e
+            raise AgentError(f"gemini request failed: {type(e).__name__}: {str(e)[:200]} "
+                             f"[{self._credential_summary}]") from e
         um = getattr(resp, "usage_metadata", None)
         self._record(task, getattr(um, "prompt_token_count", 0) or 0, getattr(um, "candidates_token_count", 0) or 0)
         return parse_json(getattr(resp, "text", "") or "")
@@ -262,7 +274,8 @@ class GeminiAgentProvider(LLMAgentProvider):
                 contents=[types.Part.from_bytes(data=audio, mime_type=mime), prompt],
                 config=types.GenerateContentConfig(max_output_tokens=1500))
         except Exception as e:  # noqa: BLE001
-            raise AgentError(f"gemini transcription failed: {type(e).__name__}") from e
+            raise AgentError(f"gemini transcription failed: {type(e).__name__} "
+                             f"[{self._credential_summary}]") from e
         um = getattr(resp, "usage_metadata", None)
         self._record("analysis", getattr(um, "prompt_token_count", 0) or 0,
                      getattr(um, "candidates_token_count", 0) or 0)

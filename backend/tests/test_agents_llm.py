@@ -1,4 +1,5 @@
 """LLM agent adapters: shared prompt/validation logic plus each vendor's wire format, with fake clients."""
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -265,6 +266,39 @@ def gemini(resp=None, exc=None):
 def test_gemini_requires_key_without_client():
     with pytest.raises(ValueError, match="GEMINI_API_KEY"):
         GeminiAgentProvider(api_key=None)
+
+
+@pytest.mark.parametrize("key", ["", "   ", "  test-secret-credential  "])
+def test_gemini_credential_diagnostics_do_not_expose_key(key, monkeypatch, caplog):
+    from google import genai
+
+    calls = []
+    remote = FakeGeminiModels(exc=RuntimeError("invalid credential"))
+
+    def make_client(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(models=remote)
+
+    monkeypatch.setattr(genai, "Client", make_client)
+    with caplog.at_level("INFO", logger="app.agents.llm"):
+        if not key.strip():
+            with pytest.raises(ValueError, match="GEMINI_API_KEY"):
+                GeminiAgentProvider(api_key=key)
+            assert "credential_present=False" in caplog.text
+            assert "credential_sha256=none" in caplog.text
+            assert not calls
+            return
+        agent = GeminiAgentProvider(api_key=key)
+    assert calls[0]["api_key"] == key.strip()
+    fingerprint = hashlib.sha256(key.strip().encode()).hexdigest()[:12]
+    with pytest.raises(AgentError) as failure:
+        agent._json("analysis", "s", ["x"], {}, 10)
+    for diagnostic in (caplog.text, str(failure.value)):
+        assert "credential_present=True" in diagnostic
+        assert f"credential_length={len(key.strip())}" in diagnostic
+        assert f"credential_sha256={fingerprint}" in diagnostic
+        assert "credential_whitespace_trimmed=True" in diagnostic
+        assert key.strip() not in diagnostic
 
 
 def test_gemini_json_success_records_usage():
